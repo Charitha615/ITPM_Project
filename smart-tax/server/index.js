@@ -7,7 +7,7 @@ const bodyParser = require('body-parser');
 const app = express();
 const port = process.env.PORT || 5000;
 
-// Middleware
+// Middleware  
 app.use(cors());
 app.use(bodyParser.json());
 
@@ -26,6 +26,18 @@ db.connect(err => {
   }
   console.log('Connected to database.');
 });
+
+const authRoutes = require('./routes/auth');
+const adminRoutes = require('./routes/admin');
+
+const dashboardRoutes = require('./routes/dashboard');
+const profileRoutes = require('./routes/profile');
+
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/profile', profileRoutes);
+
+app.use('/api/auth', authRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Test route
 app.get('/api', (req, res) => {
