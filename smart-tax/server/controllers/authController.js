@@ -5,7 +5,16 @@ const jwtConfig = require('../config/jwt');
 class AuthController {
   static async register(req, res) {
     try {
-      const { name, email, password } = req.body;
+      const {
+        name,
+        email,
+        password,
+        address,
+        contact_number,
+        gender,
+        nationality,
+        id_number
+      } = req.body;
 
       // Check if user already exists
       const existingUser = await User.findByEmail(email);
@@ -14,7 +23,17 @@ class AuthController {
       }
 
       // Create new user
-      const userId = await User.create({ name, email, password });
+      const userId = await User.create({
+        name,
+        email,
+        password,
+        address,
+        contact_number,
+        gender,
+        nationality,
+        id_number
+      });
+
       const user = await User.findById(userId);
 
       // Generate JWT token
@@ -22,15 +41,20 @@ class AuthController {
         expiresIn: jwtConfig.expiresIn
       });
 
-      res.status(201).json({ 
-        message: 'User registered successfully', 
+      res.status(201).json({
+        message: 'User registered successfully',
         user: {
           id: user.id,
           name: user.name,
           email: user.email,
+          address: user.address,
+          contact_number: user.contact_number,  
+          gender: user.gender,
+          nationality: user.nationality,
+          id_number: user.id_number,
           role: user.role
         },
-        token 
+        token
       });
     } catch (error) {
       console.error(error);
@@ -59,15 +83,20 @@ class AuthController {
         expiresIn: jwtConfig.expiresIn
       });
 
-      res.json({ 
+      res.json({
         message: 'Login successful',
         user: {
           id: user.id,
           name: user.name,
           email: user.email,
-          role: user.role
+          role: user.role,
+          address:user.address,
+          contact_number:user.contact_number,
+          gender:user.gender,
+          nationality:user.nationality,
+          id_number:user.id_number,
         },
-        token 
+        token
       });
     } catch (error) {
       console.error(error);

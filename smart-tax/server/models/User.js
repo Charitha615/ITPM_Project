@@ -2,11 +2,23 @@ const db = require('../config/db');
 const bcrypt = require('bcryptjs');
 
 class User {
-  static async create({ name, email, password, role = 'user' }) {
+  static async create({
+    name,
+    email,
+    password,
+    address,
+    contact_number,
+    gender,
+    nationality,
+    id_number,
+    role = 'user'
+  }) {
     const hashedPassword = await bcrypt.hash(password, 10);
     const [result] = await db.query(
-      'INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)',
-      [name, email, hashedPassword, role]
+      `INSERT INTO users 
+      (name, email, password, address, contact_number, gender, nationality, id_number, role) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [name, email, hashedPassword, address, contact_number, gender, nationality, id_number, role]
     );
     return result.insertId;
   }
@@ -17,7 +29,11 @@ class User {
   }
 
   static async findById(id) {
-    const [rows] = await db.query('SELECT id, name, email, role FROM users WHERE id = ?', [id]);
+    const [rows] = await db.query(
+      `SELECT id, name, email, address, contact_number, gender, nationality, id_number, role 
+      FROM users WHERE id = ?`,
+      [id]
+    );
     return rows[0];
   }
 
@@ -28,7 +44,7 @@ class User {
   static async initializeAdmin() {
     const adminEmail = 'admin@gmail.com';
     const existingAdmin = await this.findByEmail(adminEmail);
-    
+
     if (!existingAdmin) {
       await this.create({
         name: 'Admin',

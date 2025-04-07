@@ -1,71 +1,152 @@
-import React, { useState } from 'react';
-import { Box, TextField, Button, Typography, Link } from '@mui/material';
-import { useNavigate } from 'react-router-dom';
-import api from '../api';
+import { useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import axios from 'axios';
+import { motion } from 'framer-motion';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faEnvelope, faLock } from '@fortawesome/free-solid-svg-icons';
 
-function Login() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+import AuthLayout from '../components/AuthLayout';
+import InputField from '../components/InputField';
+import SubmitButton from '../components/SubmitButton';
+import { fadeIn } from '../styles/animations';
+import { colors } from '../styles/theme';
+
+const Login = () => {
+  const [formData, setFormData] = useState({
+    email: '',
+    password: '',
+  });
+  const [errors, setErrors] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [apiError, setApiError] = useState('');
   const navigate = useNavigate();
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData({
+      ...formData,
+      [name]: value,
+    });
+    // Clear error when user types
+    if (errors[name]) {
+      setErrors({
+        ...errors,
+        [name]: null,
+      });
+    }
+  };
+
+  const validate = () => {
+    const newErrors = {};
+    if (!formData.email) newErrors.email = 'Email is required';
+    if (!formData.password) newErrors.password = 'Password is required';
+    return newErrors;
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const validationErrors = validate();
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
+      return;
+    }
+
+    setLoading(true);
+    setApiError('');
+
     try {
-      const response = await api.post('/auth/login', { email, password });
+      const response = await axios.post('{{URL}}/api/auth/login', formData);
       localStorage.setItem('token', response.data.token);
       localStorage.setItem('user', JSON.stringify(response.data.user));
-      
-      if (response.data.user.role === 'admin') {
-        navigate('/admin');
-      } else {
-        navigate('/dashboard');
-      }
-    } catch (err) {
-      setError(err.response?.data?.error || 'Login failed');
+      navigate('/dashboard'); // Redirect to dashboard after login
+    } catch (error) {
+      console.error('Login error:', error);
+      setApiError(error.response?.data?.message || 'Login failed. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <Box sx={{ maxWidth: 400, mx: 'auto', mt: 5 }}>
-      <Typography variant="h4" gutterBottom>Login</Typography>
-      {error && (
-        <Typography color="error" gutterBottom>{error}</Typography>
-      )}
-      <form onSubmit={handleSubmit}>
-        <TextField
-          label="Email"
-          variant="outlined"
-          fullWidth
-          margin="normal"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
+    <AuthLayout title="Welcome Back" subtitle="Login to your account">
+      <motion.form onSubmit={handleSubmit} variants={fadeIn}>
+        {apiError && (
+          <motion.div 
+            className="mb-4 p-3 bg-red-100 text-red-700 rounded-lg"
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            {apiError}
+          </motion.div>
+        )}
+        
+        <InputField
+          type="email"
+          name="email"
+          placeholder="Email address"
+          icon={faEnvelope}
+          value={formData.email}
+          onChange={handleChange}
+          error={errors.email}
         />
-        <TextField
-          label="Password"
+        
+        <InputField
           type="password"
-          variant="outlined"
-          fullWidth
-          margin="normal"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
+          name="password"
+          placeholder="Password"
+          icon={faLock}
+          value={formData.password}
+          onChange={handleChange}
+          error={errors.password}
         />
-        <Button 
-          type="submit" 
-          variant="contained" 
-          fullWidth 
-          sx={{ mt: 2 }}
+        
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center">
+            <input
+              id="remember-me"
+              name="remember-me"
+              type="checkbox"
+              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+            />
+            <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-700">
+              Remember me
+            </label>
+          </div>
+          <div className="text-sm">
+            <Link 
+              to="/forgot-password" 
+              className="font-medium text-blue-600 hover:text-blue-500"
+              style={{ color: colors.primary }}
+            >
+              Forgot password?
+            </Link>
+          </div>
+        </div>
+        
+        <SubmitButton 
+          text="Sign In" 
+          loading={loading} 
+          disabled={loading}
+        />
+        
+        <motion.div 
+          className="mt-6 text-center"
+          variants={fadeIn}
         >
-          Login
-        </Button>
-      </form>
-      <Typography sx={{ mt: 2 }}>
-        Don't have an account? <Link href="/register">Register here</Link>
-      </Typography>
-    </Box>
+          <p className="text-sm text-gray-600">
+            Don't have an account?{' '}
+            <Link 
+              to="/register" 
+              className="font-medium text-blue-600 hover:text-blue-500"
+              style={{ color: colors.primary }}
+            >
+              Sign up
+            </Link>
+          </p>
+        </motion.div>
+      </motion.form>
+    </AuthLayout>
   );
-}
+};
 
 export default Login;
