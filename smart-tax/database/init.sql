@@ -67,3 +67,43 @@ CREATE TABLE IF NOT EXISTS tax_returns (
   FOREIGN KEY (profile_id) REFERENCES tax_profiles(id),
   UNIQUE KEY (profile_id, year)
 );
+
+
+-- Add admin approval status to users table
+ALTER TABLE users 
+ADD COLUMN is_approved BOOLEAN DEFAULT FALSE,
+ADD COLUMN admin_notes TEXT;
+
+-- Create tax categories table
+CREATE TABLE IF NOT EXISTS tax_categories (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(100) NOT NULL UNIQUE,
+  description TEXT,
+  tax_percentage DECIMAL(5, 2) NOT NULL,
+  max_deduction DECIMAL(12, 2),
+  is_active BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- Update deductions table to link with categories
+ALTER TABLE deductions
+ADD COLUMN category_id INT,
+ADD FOREIGN KEY (category_id) REFERENCES tax_categories(id);
+
+
+
+-- Add expense-related tables
+CREATE TABLE IF NOT EXISTS expenses (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  category_id INT NOT NULL,
+  amount DECIMAL(12, 2) NOT NULL,
+  description TEXT,
+  date DATE NOT NULL,
+  receipt_url VARCHAR(255),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id),
+  FOREIGN KEY (category_id) REFERENCES tax_categories(id)
+);
