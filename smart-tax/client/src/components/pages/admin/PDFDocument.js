@@ -1,7 +1,7 @@
 import React from 'react';
 import { Page, Text, View, Document, StyleSheet, PDFViewer, Image } from '@react-pdf/renderer';
 import { Chart } from 'react-chartjs-2';
-import logo from './assets/logo.jpg';
+import logo from '../../assets/img/logo.jpg';
 
 // Create styles
 const styles = StyleSheet.create({

@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { styled } from '@mui/material/styles';
+import { Visibility } from '@mui/icons-material';
 import {
   AppBar, Toolbar, Typography, Container, Paper, Tabs, Tab, Box,
-  TextField, Table, TableBody, TableCell, TableContainer, TableHead, 
-  TableRow, Chip, Grid, IconButton, Menu, MenuItem, Avatar, 
+  TextField, Table, TableBody, TableCell, TableContainer, TableHead,
+  TableRow, Chip, Grid, IconButton, Menu, MenuItem, Avatar,
   useTheme, useMediaQuery, LinearProgress, Snackbar, Alert,
   Card, CardContent, Divider, Button, InputAdornment, Dialog,
   DialogTitle, DialogContent, DialogActions, FormControl, InputLabel,
-  Select, MenuItem as SelectMenuItem, TextareaAutosize
+  Select, MenuItem as SelectMenuItem, TextareaAutosize, DialogContentText
 } from '@mui/material';
 import {
   People, CheckCircle, Pending, PersonAdd, Logout,
@@ -15,9 +16,8 @@ import {
   Check, Close, Edit, Delete, Refresh, Category,
   InsertChart, PictureAsPdf, DateRange, FilterAlt
 } from '@mui/icons-material';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
 import { PDFDownloadLink } from '@react-pdf/renderer';
 import { PDFDocument } from './PDFDocument.js';
 import api from '../../api';
@@ -38,6 +38,54 @@ const GlassPaper = styled(Paper)(({ theme }) => ({
   padding: theme.spacing(3),
   marginBottom: theme.spacing(3)
 }));
+
+// Reusable components
+const SectionHeader = ({ title }) => (
+  <Typography variant="subtitle1" sx={{ 
+    fontWeight: 600, 
+    mb: 2,
+    color: 'text.secondary',
+    borderBottom: '2px solid',
+    borderColor: 'divider',
+    pb: 0.5 
+  }}>
+    {title}
+  </Typography>
+);
+
+const InfoRow = ({ label, value }) => (
+  <Box sx={{ mb: 2 }}>
+    <Typography variant="body2" sx={{ 
+      fontWeight: 500, 
+      color: 'text.secondary',
+      mb: 0.5 
+    }}>
+      {label}
+    </Typography>
+    <Typography variant="body1" sx={{ fontWeight: 400 }}>
+      {value || '-'}
+    </Typography>
+  </Box>
+);
+
+// Custom DatePicker input to match MUI style
+const CustomDatePickerInput = React.forwardRef(({ value, onClick, ...props }, ref) => (
+  <TextField
+    fullWidth
+    margin="normal"
+    value={value}
+    onClick={onClick}
+    ref={ref}
+    InputProps={{
+      endAdornment: (
+        <InputAdornment position="end">
+          <DateRange />
+        </InputAdornment>
+      ),
+    }}
+    {...props}
+  />
+));
 
 const StatCard = ({ title, value, icon, color }) => {
   const theme = useTheme();
@@ -111,38 +159,52 @@ const AdminDashboard = () => {
     includeCharts: true,
     includeTables: true
   });
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [openDialog, setOpenDialog] = useState(false);
+
+  const handleViewDetails = (user) => {
+    setSelectedUser(user);
+    setOpenDialog(true);
+  };
 
   // Fetch all data
   const fetchData = async () => {
     try {
       setLoading(true);
-      
+
       // Fetch users
       const usersResponse = await api.get('/api/users');
       setUsers(usersResponse.data);
-      
-      // Fetch categories
-      const categoriesResponse = await api.get('/api/tax-categories');
-      setCategories(categoriesResponse.data);
-      
-      // Fetch analytics data
-      const analyticsResponse = await api.get('/api/analytics');
-      setAnalyticsData(analyticsResponse.data);
-      
+
       // Calculate statistics
       const totalUsers = usersResponse.data.length;
-      const approvedUsers = usersResponse.data.filter(u => u.isApproved).length;
-      const totalCategories = categoriesResponse.data.length;
-      const activeCategories = categoriesResponse.data.filter(c => c.is_active).length;
-      
+      const approvedUsers = usersResponse.data.filter(u => u.isApproved === 1).length; // Changed to check for 1
+
       setStats({
+        ...stats,
         totalUsers,
         approvedUsers,
-        pendingUsers: totalUsers - approvedUsers,
+        pendingUsers: totalUsers - approvedUsers
+      });
+
+      // Fetch categories
+      const categoriesResponse = await api.get('/api/tax-categories'); 
+      setCategories(categoriesResponse.data);
+
+      // Update category stats
+      const totalCategories = categoriesResponse.data.length;
+      const activeCategories = categoriesResponse.data.filter(c => c.is_active).length;
+
+      setStats(prev => ({
+        ...prev,
         totalCategories,
         activeCategories
-      });
-      
+      }));
+
+      // Fetch analytics data
+      const analyticsResponse = await api.get('/analytics'); 
+      setAnalyticsData(analyticsResponse.data);
+
       setError(null);
     } catch (err) {
       handleApiError(err, 'Failed to fetch data');
@@ -155,7 +217,7 @@ const AdminDashboard = () => {
   const handleApproveUser = async (userId, approve) => {
     try {
       const endpoint = approve ? 'approve' : 'reject';
-      await api.patch(`/api/users/${endpoint}/${userId}`);
+      await api.patch(`/api/users/${endpoint}/${userId}`); // Changed from '/api/users' to '/users'
       setSuccess(`User ${approve ? 'approved' : 'rejected'} successfully!`);
       fetchData();
     } catch (err) {
@@ -167,11 +229,19 @@ const AdminDashboard = () => {
   const toggleCategoryStatus = async (category) => {
     try {
       const updatedCategory = { ...category, is_active: !category.is_active };
-      const response = await api.put(`/api/tax-categories/${category.id}`, updatedCategory);
+      const response = await api.put(`/api/tax-categories/${category.id}`, updatedCategory); 
       setCategories(categories.map(cat =>
         cat.id === category.id ? response.data : cat
       ));
       setSuccess(`Category ${updatedCategory.is_active ? 'activated' : 'deactivated'}!`);
+
+      // Update stats
+      const activeCategories = updatedCategory.is_active ?
+        stats.activeCategories + 1 : stats.activeCategories - 1;
+      setStats(prev => ({
+        ...prev,
+        activeCategories
+      }));
     } catch (err) {
       handleApiError(err, 'Failed to update category status');
     }
@@ -181,7 +251,7 @@ const AdminDashboard = () => {
   const generateReport = async () => {
     try {
       setLoading(true);
-      const response = await api.post('/api/analytics/report', reportConfig);
+      const response = await api.post('/analytics/report', reportConfig); // Changed from '/api/analytics/report' to '/analytics/report'
       return response.data;
     } catch (err) {
       handleApiError(err, 'Failed to generate report');
@@ -206,20 +276,20 @@ const AdminDashboard = () => {
   const authApi = {
     logout: () => {
       localStorage.removeItem('token');
-      navigate('/login');
+      navigate('/');
     },
   };
 
   // Filter users based on search term
   const filteredUsers = users.filter(user =>
-    user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.email.toLowerCase().includes(searchTerm.toLowerCase())
+    user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    user.email?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   // Filter categories based on search term
   const filteredCategories = categories.filter(category =>
-    category.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    category.description.toLowerCase().includes(searchTerm.toLowerCase())
+    category.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    category.description?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   // Set up interceptors and initial data fetch
@@ -274,7 +344,7 @@ const AdminDashboard = () => {
             ADMIN DASHBOARD
           </Typography>
 
-          <IconButton color="inherit" onClick={() => theme.palette.mode === 'dark' ? theme.setMode('light') : theme.setMode('dark')}>
+          <IconButton color="inherit">
             {theme.palette.mode === 'dark' ? <LightMode /> : <DarkMode />}
           </IconButton>
 
@@ -301,6 +371,9 @@ const AdminDashboard = () => {
       </AppBar>
 
       <Container maxWidth="xl" sx={{ mt: 4, mb: 4, flex: 1 }}>
+        {/* Loading Indicator */}
+        {loading && <LinearProgress sx={{ mb: 2 }} />}
+
         {/* Notifications */}
         <Snackbar open={!!error} autoHideDuration={6000} onClose={() => setError(null)}>
           <Alert severity="error" sx={{ width: '100%' }}>
@@ -413,9 +486,15 @@ const AdminDashboard = () => {
                           />
                         </TableCell>
                         <TableCell>
-                          {new Date(user.createdAt).toLocaleDateString()}
+                          {new Date(user.created_at).toLocaleDateString()}
                         </TableCell>
                         <TableCell align="center">
+                          <IconButton
+                            color="primary"
+                            onClick={() => handleViewDetails(user)}
+                          >
+                            <Visibility />
+                          </IconButton>
                           <IconButton
                             color={user.isApproved ? 'error' : 'success'}
                             onClick={() => handleApproveUser(user.id, !user.isApproved)}
@@ -428,6 +507,80 @@ const AdminDashboard = () => {
                   </TableBody>
                 </Table>
               </TableContainer>
+
+              {/* User Details Dialog */}
+              <Dialog
+                open={openDialog}
+                onClose={() => setOpenDialog(false)}
+                maxWidth="md"
+                fullWidth
+                PaperProps={{
+                  sx: { borderRadius: 3 }
+                }}
+              >
+                <DialogTitle sx={{
+                  bgcolor: 'primary.main',
+                  color: 'white',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  py: 2,
+                  borderBottom: '1px solid',
+                  borderColor: 'divider'
+                }}>
+                  <Box display="flex" alignItems="center">
+                    {/* <Person fontSize="medium" sx={{ mr: 1.5 }} /> */}
+                    User Profile
+                  </Box>
+                  <IconButton onClick={() => setOpenDialog(false)} sx={{ color: 'white' }}>
+                    <Close />
+                  </IconButton>
+                </DialogTitle>
+
+                <DialogContent sx={{ p: 3 }}>
+                  {selectedUser && (
+                    <Grid container spacing={3} sx={{ mt: 1 }}>
+                      {/* Left Column */}
+                      <Grid item xs={12} md={6}>
+                        <SectionHeader title="Personal Information" />
+                        <InfoRow label="Full Name" value={selectedUser.name} />
+                        <InfoRow label="Email" value={selectedUser.email} />
+                        <InfoRow label="Contact Number" value={selectedUser.contact_number} />
+                        <InfoRow label="Gender" value={selectedUser.gender} />
+                        <InfoRow label="Nationality" value={selectedUser.nationality} />
+                      </Grid>
+
+                      {/* Right Column */}
+                      <Grid item xs={12} md={6}>
+                        <SectionHeader title="Account Details" />
+                        <InfoRow label="User Role" value={selectedUser.role} />
+                        <InfoRow label="Registration Date"
+                          value={new Date(selectedUser.created_at).toLocaleString()} />
+                        <InfoRow label="ID Number" value={selectedUser.id_number} />
+                        <InfoRow label="Address" value={selectedUser.address} />
+
+                        <Box sx={{ display: 'flex', alignItems: 'center', mt: 1.5 }}>
+                          <Typography variant="body1" sx={{ fontWeight: 500, mr: 1 }}>
+                            Status:
+                          </Typography>
+                          <Chip
+                            label={selectedUser.isApproved ? 'Approved' : 'Pending'}
+                            size="small"
+                            variant="outlined"
+                            sx={{
+                              borderRadius: 1,
+                              borderWidth: 2,
+                              borderColor: selectedUser.isApproved ? 'success.main' : 'warning.main',
+                              color: selectedUser.isApproved ? 'success.dark' : 'warning.dark',
+                              bgcolor: selectedUser.isApproved ? 'success.light' : 'warning.light'
+                            }}
+                          />
+                        </Box>
+                      </Grid>
+                    </Grid>
+                  )}
+                </DialogContent>
+              </Dialog>
             </GlassPaper>
           </Box>
         )}
@@ -551,7 +704,6 @@ const AdminDashboard = () => {
                     <Typography variant="h6" gutterBottom>
                       User Registrations
                     </Typography>
-                    {/* Chart would go here */}
                     <Box height={300} bgcolor="action.hover" display="flex" alignItems="center" justifyContent="center">
                       <Typography>User Registration Chart</Typography>
                     </Box>
@@ -562,7 +714,6 @@ const AdminDashboard = () => {
                     <Typography variant="h6" gutterBottom>
                       Category Usage
                     </Typography>
-                    {/* Chart would go here */}
                     <Box height={300} bgcolor="action.hover" display="flex" alignItems="center" justifyContent="center">
                       <Typography>Category Usage Chart</Typography>
                     </Box>
@@ -573,7 +724,6 @@ const AdminDashboard = () => {
                     <Typography variant="h6" gutterBottom>
                       Revenue Data
                     </Typography>
-                    {/* Chart would go here */}
                     <Box height={400} bgcolor="action.hover" display="flex" alignItems="center" justifyContent="center">
                       <Typography>Revenue Data Chart</Typography>
                     </Box>
@@ -592,26 +742,27 @@ const AdminDashboard = () => {
           <Grid container spacing={3}>
             <Grid item xs={12} md={6}>
               <FormControl fullWidth margin="normal">
-                <LocalizationProvider dateAdapter={AdapterDateFns}>
-                  <DatePicker
-                    label="Start Date"
-                    value={reportConfig.startDate}
-                    onChange={(date) => setReportConfig({...reportConfig, startDate: date})}
-                    renderInput={(params) => <TextField {...params} fullWidth />}
-                  />
-                </LocalizationProvider>
+                <DatePicker
+                  selected={reportConfig.startDate}
+                  onChange={(date) => setReportConfig({ ...reportConfig, startDate: date })}
+                  customInput={<CustomDatePickerInput label="Start Date" />}
+                  selectsStart
+                  startDate={reportConfig.startDate}
+                  endDate={reportConfig.endDate}
+                />
               </FormControl>
             </Grid>
             <Grid item xs={12} md={6}>
               <FormControl fullWidth margin="normal">
-                <LocalizationProvider dateAdapter={AdapterDateFns}>
-                  <DatePicker
-                    label="End Date"
-                    value={reportConfig.endDate}
-                    onChange={(date) => setReportConfig({...reportConfig, endDate: date})}
-                    renderInput={(params) => <TextField {...params} fullWidth />}
-                  />
-                </LocalizationProvider>
+                <DatePicker
+                  selected={reportConfig.endDate}
+                  onChange={(date) => setReportConfig({ ...reportConfig, endDate: date })}
+                  customInput={<CustomDatePickerInput label="End Date" />}
+                  selectsEnd
+                  startDate={reportConfig.startDate}
+                  endDate={reportConfig.endDate}
+                  minDate={reportConfig.startDate}
+                />
               </FormControl>
             </Grid>
             <Grid item xs={12}>
@@ -619,7 +770,7 @@ const AdminDashboard = () => {
                 <InputLabel>Report Type</InputLabel>
                 <Select
                   value={reportConfig.reportType}
-                  onChange={(e) => setReportConfig({...reportConfig, reportType: e.target.value})}
+                  onChange={(e) => setReportConfig({ ...reportConfig, reportType: e.target.value })}
                   label="Report Type"
                 >
                   <SelectMenuItem value="summary">Summary Report</SelectMenuItem>
@@ -644,18 +795,18 @@ const AdminDashboard = () => {
           <Button onClick={() => setPdfDialogOpen(false)}>Cancel</Button>
           <PDFDownloadLink
             document={
-              <PDFDocument 
-                data={analyticsData} 
-                config={pdfConfig} 
+              <PDFDocument
+                data={analyticsData}
+                config={pdfConfig}
                 reportConfig={reportConfig}
               />
             }
             fileName="analytics_report.pdf"
           >
             {({ loading }) => (
-              <Button 
-                variant="contained" 
-                color="primary" 
+              <Button
+                variant="contained"
+                color="primary"
                 startIcon={<PictureAsPdf />}
                 disabled={loading}
               >
