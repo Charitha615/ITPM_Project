@@ -31,7 +31,8 @@ class AuthController {
         contact_number,
         gender,
         nationality,
-        id_number
+        id_number,
+        isApproved: false
       });
 
       const user = await User.findById(userId);
@@ -78,6 +79,13 @@ class AuthController {
         return res.status(401).json({ message: 'Invalid credentials' });
       }
 
+      // Check if user is approved
+      if (!user.isApproved) {
+        return res.status(403).json({ 
+          message: 'Account not approved yet. Please wait for admin approval.' 
+        });
+      }
+
       // Generate JWT token
       const token = jwt.sign({ id: user.id, role: user.role }, jwtConfig.secret, {
         expiresIn: jwtConfig.expiresIn
@@ -90,11 +98,11 @@ class AuthController {
           name: user.name,
           email: user.email,
           role: user.role,
-          address:user.address,
-          contact_number:user.contact_number,
-          gender:user.gender,
-          nationality:user.nationality,
-          id_number:user.id_number,
+          address: user.address,  
+          contact_number: user.contact_number,
+          gender: user.gender,
+          nationality: user.nationality,
+          id_number: user.id_number,
         },
         token
       });

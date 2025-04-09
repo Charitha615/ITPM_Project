@@ -1,22 +1,29 @@
 import React, { useState, useEffect } from 'react';
-import { Percent } from '@mui/icons-material';
+import { styled } from '@mui/material/styles';
 import {
   AppBar, Toolbar, Typography, Container, Paper, Tabs, Tab, Box,
-  TextField, Button, Checkbox, FormControlLabel, Table, TableBody,
-  TableCell, TableContainer, TableHead, TableRow, Chip, Grid,
-  IconButton, Menu, MenuItem, Avatar, Dialog, DialogTitle,
-  DialogContent, DialogActions, useTheme, useMediaQuery, styled,
-  LinearProgress, Snackbar, Alert, InputAdornment
+  TextField, Table, TableBody, TableCell, TableContainer, TableHead, 
+  TableRow, Chip, Grid, IconButton, Menu, MenuItem, Avatar, 
+  useTheme, useMediaQuery, LinearProgress, Snackbar, Alert,
+  Card, CardContent, Divider, Button, InputAdornment, Dialog,
+  DialogTitle, DialogContent, DialogActions, FormControl, InputLabel,
+  Select, MenuItem as SelectMenuItem, TextareaAutosize
 } from '@mui/material';
 import {
-  Add, Check, Close, Edit, Delete, Logout,
+  People, CheckCircle, Pending, PersonAdd, Logout,
   DarkMode, LightMode, Menu as MenuIcon, Search,
-  Percentage, Category, Info, ToggleOn, ToggleOff
+  Check, Close, Edit, Delete, Refresh, Category,
+  InsertChart, PictureAsPdf, DateRange, FilterAlt
 } from '@mui/icons-material';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { PDFDownloadLink } from '@react-pdf/renderer';
+import { PDFDocument } from './PDFDocument.js';
 import api from '../../api';
 import { useNavigate } from 'react-router-dom';
 
-// Futuristic styled components
+// Styled Components
 const GlassPaper = styled(Paper)(({ theme }) => ({
   background: theme.palette.mode === 'dark'
     ? 'rgba(30, 30, 40, 0.7)'
@@ -27,28 +34,44 @@ const GlassPaper = styled(Paper)(({ theme }) => ({
     ? 'rgba(255, 255, 255, 0.1)'
     : 'rgba(0, 0, 0, 0.1)',
   borderRadius: '12px',
-  boxShadow: theme.shadows[10]
+  boxShadow: theme.shadows[10],
+  padding: theme.spacing(3),
+  marginBottom: theme.spacing(3)
 }));
 
-const NeonButton = styled(Button)(({ theme }) => ({
-  background: `linear-gradient(45deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
-  color: 'white',
-  fontWeight: 'bold',
-  textTransform: 'none',
-  borderRadius: '8px',
-  padding: '8px 20px',
-  boxShadow: `0 0 8px ${theme.palette.primary.main}`,
-  '&:hover': {
-    boxShadow: `0 0 15px ${theme.palette.primary.main}`
-  }
-}));
-
-const HolographicTableHead = styled(TableHead)(({ theme }) => ({
-  background: theme.palette.mode === 'dark'
-    ? 'linear-gradient(45deg, rgba(30, 30, 40, 0.9) 0%, rgba(50, 50, 70, 0.9) 100%)'
-    : 'linear-gradient(45deg, rgba(240, 240, 255, 0.9) 0%, rgba(220, 220, 240, 0.9) 100%)',
-  borderBottom: `2px solid ${theme.palette.divider}`
-}));
+const StatCard = ({ title, value, icon, color }) => {
+  const theme = useTheme();
+  return (
+    <GlassPaper>
+      <CardContent>
+        <Box display="flex" justifyContent="space-between" alignItems="center">
+          <Box>
+            <Typography variant="subtitle2" color="textSecondary">
+              {title}
+            </Typography>
+            <Typography variant="h4" sx={{ mt: 1 }}>
+              {value}
+            </Typography>
+          </Box>
+          <Box
+            sx={{
+              backgroundColor: theme.palette[color].light,
+              color: theme.palette[color].dark,
+              borderRadius: '50%',
+              width: 56,
+              height: 56,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            {icon}
+          </Box>
+        </Box>
+      </CardContent>
+    </GlassPaper>
+  );
+};
 
 const AdminDashboard = () => {
   const theme = useTheme();
@@ -56,54 +79,119 @@ const AdminDashboard = () => {
   const navigate = useNavigate();
 
   // State management
+  const [activeTab, setActiveTab] = useState(0);
+  const [users, setUsers] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [stats, setStats] = useState({
+    totalUsers: 0,
+    approvedUsers: 0,
+    pendingUsers: 0,
+    totalCategories: 0,
+    activeCategories: 0
+  });
+  const [analyticsData, setAnalyticsData] = useState({
+    userRegistrations: [],
+    categoryUsage: [],
+    revenueData: []
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
-  const [activeTab, setActiveTab] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
-  const [newCategory, setNewCategory] = useState({
-    name: '',
-    tax_percentage: '',
-    description: '',
-    is_active: true
-  });
-  const [editCategory, setEditCategory] = useState(null);
   const [anchorEl, setAnchorEl] = useState(null);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [categoryToDelete, setCategoryToDelete] = useState(null);
+  const [reportConfig, setReportConfig] = useState({
+    startDate: new Date(new Date().setMonth(new Date().getMonth() - 1)),
+    endDate: new Date(),
+    reportType: 'summary',
+    filters: {}
+  });
+  const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
+  const [pdfConfig, setPdfConfig] = useState({
+    title: 'Analytics Report',
+    includeCharts: true,
+    includeTables: true
+  });
 
-  // API functions
-  const taxCategoriesApi = {
-    getAll: () => api.get('api/tax-categories'),
-    getById: (id) => api.get(`api/tax-categories/${id}`),
-    create: (data) => api.post('api/tax-categories', data),
-    update: (id, data) => api.put(`api/tax-categories/${id}`, data),
-    delete: (id) => api.delete(`api/tax-categories/${id}`),
-  };
-
-  const authApi = {
-    logout: () => {
-      localStorage.removeItem('token');
-      navigate('/login');
-    },
-  };
-
-  // Fetch categories with error handling
-  const fetchCategories = async () => {
+  // Fetch all data
+  const fetchData = async () => {
     try {
       setLoading(true);
-      const response = await taxCategoriesApi.getAll();
-      setCategories(response.data);
+      
+      // Fetch users
+      const usersResponse = await api.get('/api/users');
+      setUsers(usersResponse.data);
+      
+      // Fetch categories
+      const categoriesResponse = await api.get('/api/tax-categories');
+      setCategories(categoriesResponse.data);
+      
+      // Fetch analytics data
+      const analyticsResponse = await api.get('/api/analytics');
+      setAnalyticsData(analyticsResponse.data);
+      
+      // Calculate statistics
+      const totalUsers = usersResponse.data.length;
+      const approvedUsers = usersResponse.data.filter(u => u.isApproved).length;
+      const totalCategories = categoriesResponse.data.length;
+      const activeCategories = categoriesResponse.data.filter(c => c.is_active).length;
+      
+      setStats({
+        totalUsers,
+        approvedUsers,
+        pendingUsers: totalUsers - approvedUsers,
+        totalCategories,
+        activeCategories
+      });
+      
       setError(null);
     } catch (err) {
-      handleApiError(err, 'Failed to fetch categories');
+      handleApiError(err, 'Failed to fetch data');
     } finally {
       setLoading(false);
     }
   };
 
-  // Handle API errors consistently
+  // Handle user approval
+  const handleApproveUser = async (userId, approve) => {
+    try {
+      const endpoint = approve ? 'approve' : 'reject';
+      await api.patch(`/api/users/${endpoint}/${userId}`);
+      setSuccess(`User ${approve ? 'approved' : 'rejected'} successfully!`);
+      fetchData();
+    } catch (err) {
+      handleApiError(err, `Failed to ${approve ? 'approve' : 'reject'} user`);
+    }
+  };
+
+  // Handle category status toggle
+  const toggleCategoryStatus = async (category) => {
+    try {
+      const updatedCategory = { ...category, is_active: !category.is_active };
+      const response = await api.put(`/api/tax-categories/${category.id}`, updatedCategory);
+      setCategories(categories.map(cat =>
+        cat.id === category.id ? response.data : cat
+      ));
+      setSuccess(`Category ${updatedCategory.is_active ? 'activated' : 'deactivated'}!`);
+    } catch (err) {
+      handleApiError(err, 'Failed to update category status');
+    }
+  };
+
+  // Generate report
+  const generateReport = async () => {
+    try {
+      setLoading(true);
+      const response = await api.post('/api/analytics/report', reportConfig);
+      return response.data;
+    } catch (err) {
+      handleApiError(err, 'Failed to generate report');
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle API errors
   const handleApiError = (err, defaultMessage) => {
     const errorMessage = err.response?.data?.message || defaultMessage;
     setError(errorMessage);
@@ -114,65 +202,19 @@ const AdminDashboard = () => {
     }
   };
 
-  // CRUD Operations
-  const handleCreateCategory = async (e) => {
-    e.preventDefault();
-    try {
-      const response = await taxCategoriesApi.create(newCategory);
-      setCategories([...categories, response.data]);
-      setNewCategory({ name: '', tax_percentage: '', description: '', is_active: true });
-      setSuccess('Category created successfully!');
-    } catch (err) {
-      handleApiError(err, 'Failed to create category');
-    }
+  // API functions
+  const authApi = {
+    logout: () => {
+      localStorage.removeItem('token');
+      navigate('/login');
+    },
   };
 
-  const handleUpdateCategory = async (e) => {
-    e.preventDefault();
-    try {
-      const response = await taxCategoriesApi.update(editCategory.id, editCategory);
-      setCategories(categories.map(cat =>
-        cat.id === editCategory.id ? response.data : cat
-      ));
-      setEditCategory(null);
-      setSuccess('Category updated successfully!');
-    } catch (err) {
-      handleApiError(err, 'Failed to update category');
-    }
-  };
-
-  const handleCategoryChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    const targetState = editCategory ? setEditCategory : setNewCategory;
-    targetState(prev => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : value
-    }));
-  };
-
-  const handleDeleteCategory = async () => {
-    try {
-      await taxCategoriesApi.delete(categoryToDelete);
-      setCategories(categories.filter(cat => cat.id !== categoryToDelete));
-      setDeleteDialogOpen(false);
-      setSuccess('Category deleted successfully!');
-    } catch (err) {
-      handleApiError(err, 'Failed to delete category');
-    }
-  };
-
-  const toggleCategoryStatus = async (category) => {
-    try {
-      const updatedCategory = { ...category, is_active: !category.is_active };
-      const response = await taxCategoriesApi.update(category.id, updatedCategory);
-      setCategories(categories.map(cat =>
-        cat.id === category.id ? response.data : cat
-      ));
-      setSuccess(`Category ${updatedCategory.is_active ? 'activated' : 'deactivated'}!`);
-    } catch (err) {
-      handleApiError(err, 'Failed to update category status');
-    }
-  };
+  // Filter users based on search term
+  const filteredUsers = users.filter(user =>
+    user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    user.email.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   // Filter categories based on search term
   const filteredCategories = categories.filter(category =>
@@ -180,7 +222,7 @@ const AdminDashboard = () => {
     category.description.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Set up interceptors
+  // Set up interceptors and initial data fetch
   useEffect(() => {
     const requestInterceptor = api.interceptors.request.use(
       config => {
@@ -193,7 +235,7 @@ const AdminDashboard = () => {
       error => Promise.reject(error)
     );
 
-    fetchCategories();
+    fetchData();
 
     return () => {
       api.interceptors.request.eject(requestInterceptor);
@@ -209,7 +251,7 @@ const AdminDashboard = () => {
         ? 'radial-gradient(circle at center, #1a1a2e 0%, #16213e 70%, #0f3460 100%)'
         : 'radial-gradient(circle at center, #f5f7fa 0%, #e4e8f0 70%, #d0d7e2 100%)'
     }}>
-      {/* Futuristic App Bar */}
+      {/* App Bar */}
       <AppBar position="static" elevation={0} sx={{
         background: 'transparent',
         backdropFilter: 'blur(10px)',
@@ -229,7 +271,7 @@ const AdminDashboard = () => {
             WebkitTextFillColor: 'transparent',
             fontWeight: 'bold'
           }}>
-            TAX CATEGORIES MANAGER
+            ADMIN DASHBOARD
           </Typography>
 
           <IconButton color="inherit" onClick={() => theme.palette.mode === 'dark' ? theme.setMode('light') : theme.setMode('dark')}>
@@ -273,7 +315,7 @@ const AdminDashboard = () => {
         </Snackbar>
 
         {/* Main Content */}
-        <GlassPaper sx={{ p: isMobile ? 1 : 3, mb: 3 }}>
+        <GlassPaper>
           <Tabs
             value={activeTab}
             onChange={(e, newValue) => setActiveTab(newValue)}
@@ -282,272 +324,345 @@ const AdminDashboard = () => {
             textColor="secondary"
             indicatorColor="secondary"
           >
-            <Tab label="Categories" icon={<Category />} iconPosition="start" />
-            <Tab label="Analytics" icon={<Info />} iconPosition="start" disabled />
+            <Tab label="Users" icon={<People />} iconPosition="start" />
+            <Tab label="Tax Categories" icon={<Category />} iconPosition="start" />
+            <Tab label="Analytics" icon={<InsertChart />} iconPosition="start" />
           </Tabs>
         </GlassPaper>
 
         {activeTab === 0 && (
           <Box>
-            {/* Search and Create Section */}
+            {/* User Statistics Cards */}
             <Grid container spacing={3} sx={{ mb: 3 }}>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  fullWidth
-                  placeholder="Search categories..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <Search color="secondary" />
-                      </InputAdornment>
-                    ),
-                    sx: { borderRadius: '8px' }
-                  }}
+              <Grid item xs={12} md={4}>
+                <StatCard
+                  title="Total Users"
+                  value={stats.totalUsers}
+                  icon={<People fontSize="large" />}
+                  color="primary"
                 />
               </Grid>
-              <Grid item xs={12} md={6} sx={{
-                display: 'flex',
-                justifyContent: isMobile ? 'flex-start' : 'flex-end',
-                gap: 2
-              }}>
-                <NeonButton
-                  startIcon={<Add />}
-                  onClick={() => setEditCategory(null)}
-                >
-                  New Category
-                </NeonButton>
+              <Grid item xs={12} md={4}>
+                <StatCard
+                  title="Approved Users"
+                  value={stats.approvedUsers}
+                  icon={<CheckCircle fontSize="large" />}
+                  color="success"
+                />
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <StatCard
+                  title="Pending Approval"
+                  value={stats.pendingUsers}
+                  icon={<Pending fontSize="large" />}
+                  color="warning"
+                />
               </Grid>
             </Grid>
 
-            {/* Category Form */}
-            {(editCategory || !isMobile) && (
-              <GlassPaper sx={{ p: 3, mb: 3 }}>
-                <Typography variant="h6" sx={{ mb: 2, color: 'secondary.main' }}>
-                  {editCategory ? 'Edit Category' : 'Create New Category'}
-                </Typography>
-                <form onSubmit={editCategory ? handleUpdateCategory : handleCreateCategory}>
-                  <Grid container spacing={2}>
-                    <Grid item xs={12} md={4}>
-                      <TextField
-                        fullWidth
-                        label="Category Name"
-                        name="name"
-                        value={editCategory ? editCategory.name : newCategory.name}
-                        onChange={(e) => handleCategoryChange(e)}
-                        required
-                        variant="outlined"
-                        size="small"
-                        InputProps={{
-                          startAdornment: (
-                            <InputAdornment position="start">
-                              <Category color="secondary" />
-                            </InputAdornment>
-                          ),
-                        }}
-                      />
-                    </Grid>
-                    <Grid item xs={12} md={4}>
-                      <TextField
-                        fullWidth
-                        label="Tax Percentage"
-                        name="tax_percentage"
-                        type="number"
-                        value={editCategory ? editCategory.tax_percentage : newCategory.tax_percentage}
-                        onChange={(e) => handleCategoryChange(e)}
-                        InputProps={{
-                          inputProps: { min: 0, max: 100, step: 0.01 },
-                          startAdornment: (
-                            <InputAdornment position="start">
-                              <Percent color="secondary" />
-                            </InputAdornment>
-                          ),
-                        }}
-                        required
-                        variant="outlined"
-                        size="small"
-                      />
-                    </Grid>
-                    <Grid item xs={12} md={4}>
-                      <FormControlLabel
-                        control={
-                          <Checkbox
-                            checked={editCategory ? editCategory.is_active : newCategory.is_active}
-                            onChange={(e) => handleCategoryChange(e)}
-                            name="is_active"
-                            color="secondary"
-                            icon={<ToggleOff />}
-                            checkedIcon={<ToggleOn />}
-                          />
-                        }
-                        label="Active"
-                      />
-                    </Grid>
-                    <Grid item xs={12}>
-                      <TextField
-                        fullWidth
-                        multiline
-                        rows={3}
-                        label="Description"
-                        name="description"
-                        value={editCategory ? editCategory.description : newCategory.description}
-                        onChange={(e) => handleCategoryChange(e)}
-                        variant="outlined"
-                        size="small"
-                      />
-                    </Grid>
-                    <Grid item xs={12} sx={{ display: 'flex', gap: 2 }}>
-                      <NeonButton type="submit">
-                        {editCategory ? 'Update' : 'Create'}
-                      </NeonButton>
-                      {editCategory && (
-                        <Button
-                          variant="outlined"
-                          color="secondary"
-                          onClick={() => setEditCategory(null)}
-                        >
-                          Cancel
-                        </Button>
-                      )}
-                    </Grid>
-                  </Grid>
-                </form>
-              </GlassPaper>
-            )}
-
-            {/* Categories List */}
-            <GlassPaper sx={{ p: isMobile ? 1 : 3 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="h6" sx={{ color: 'secondary.main' }}>
-                  Tax Categories
-                </Typography>
-                {loading && <LinearProgress sx={{ width: '100px' }} />}
+            {/* User Management */}
+            <GlassPaper>
+              <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                <Typography variant="h6">User Management</Typography>
+                <Box display="flex" gap={2}>
+                  <TextField
+                    size="small"
+                    placeholder="Search users..."
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Search />
+                        </InputAdornment>
+                      )
+                    }}
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    startIcon={<Refresh />}
+                    onClick={fetchData}
+                  >
+                    Refresh
+                  </Button>
+                </Box>
               </Box>
 
-              <TableContainer sx={{
-                maxHeight: 'calc(100vh - 400px)',
-                '&::-webkit-scrollbar': {
-                  width: '6px',
-                  height: '6px'
-                },
-                '&::-webkit-scrollbar-thumb': {
-                  background: theme.palette.secondary.main,
-                  borderRadius: '3px'
-                }
-              }}>
-                <Table stickyHeader size={isMobile ? 'small' : 'medium'}>
-                  <HolographicTableHead>
+              <TableContainer>
+                <Table>
+                  <TableHead>
                     <TableRow>
                       <TableCell>Name</TableCell>
-                      <TableCell align="right">Tax %</TableCell>
-                      {!isMobile && <TableCell>Description</TableCell>}
+                      <TableCell>Email</TableCell>
                       <TableCell>Status</TableCell>
+                      <TableCell>Registered</TableCell>
                       <TableCell align="center">Actions</TableCell>
                     </TableRow>
-                  </HolographicTableHead>
+                  </TableHead>
                   <TableBody>
-                    {filteredCategories.length === 0 && !loading ? (
-                      <TableRow>
-                        <TableCell colSpan={5} align="center">
-                          No categories found
+                    {filteredUsers.map((user) => (
+                      <TableRow key={user.id}>
+                        <TableCell>{user.name}</TableCell>
+                        <TableCell>{user.email}</TableCell>
+                        <TableCell>
+                          <Chip
+                            label={user.isApproved ? 'Approved' : 'Pending'}
+                            color={user.isApproved ? 'success' : 'warning'}
+                            size="small"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          {new Date(user.createdAt).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell align="center">
+                          <IconButton
+                            color={user.isApproved ? 'error' : 'success'}
+                            onClick={() => handleApproveUser(user.id, !user.isApproved)}
+                          >
+                            {user.isApproved ? <Close /> : <Check />}
+                          </IconButton>
                         </TableCell>
                       </TableRow>
-                    ) : (
-                      filteredCategories.map((category) => (
-                        <TableRow
-                          key={category.id}
-                          hover
-                          sx={{
-                            '&:last-child td': { borderBottom: 0 },
-                            '&:hover': {
-                              background: theme.palette.mode === 'dark'
-                                ? 'rgba(255, 255, 255, 0.03)'
-                                : 'rgba(0, 0, 0, 0.03)'
-                            }
-                          }}
-                        >
-                          <TableCell>{category.name}</TableCell>
-                          <TableCell align="right">{category.tax_percentage}%</TableCell>
-                          {!isMobile && (
-                            <TableCell sx={{
-                              maxWidth: 300,
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap'
-                            }}>
-                              {category.description}
-                            </TableCell>
-                          )}
-                          <TableCell>
-                            <Chip
-                              label={category.is_active ? 'Active' : 'Inactive'}
-                              color={category.is_active ? 'success' : 'error'}
-                              size="small"
-                              variant="outlined"
-                              icon={category.is_active ? <Check /> : <Close />}
-                            />
-                          </TableCell>
-                          <TableCell align="center" sx={{ whiteSpace: 'nowrap' }}>
-                            <IconButton
-                              color="secondary"
-                              onClick={() => setEditCategory(category)}
-                              size="small"
-                              sx={{ '&:hover': { color: theme.palette.primary.main } }}
-                            >
-                              <Edit fontSize="small" />
-                            </IconButton>
-                            <IconButton
-                              color="error"
-                              onClick={() => {
-                                setCategoryToDelete(category.id);
-                                setDeleteDialogOpen(true);
-                              }}
-                              size="small"
-                            >
-                              <Delete fontSize="small" />
-                            </IconButton>
-                            <IconButton
-                              color={category.is_active ? 'warning' : 'success'}
-                              onClick={() => toggleCategoryStatus(category)}
-                              size="small"
-                            >
-                              {category.is_active ? <Close fontSize="small" /> : <Check fontSize="small" />}
-                            </IconButton>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
+                    ))}
                   </TableBody>
                 </Table>
               </TableContainer>
             </GlassPaper>
           </Box>
         )}
+
+        {activeTab === 1 && (
+          <Box>
+            {/* Tax Categories Statistics */}
+            <Grid container spacing={3} sx={{ mb: 3 }}>
+              <Grid item xs={12} md={6}>
+                <StatCard
+                  title="Total Categories"
+                  value={stats.totalCategories}
+                  icon={<Category fontSize="large" />}
+                  color="info"
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <StatCard
+                  title="Active Categories"
+                  value={stats.activeCategories}
+                  icon={<CheckCircle fontSize="large" />}
+                  color="success"
+                />
+              </Grid>
+            </Grid>
+
+            {/* Tax Categories Management */}
+            <GlassPaper>
+              <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                <Typography variant="h6">Tax Categories</Typography>
+                <Box display="flex" gap={2}>
+                  <TextField
+                    size="small"
+                    placeholder="Search categories..."
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <Search />
+                        </InputAdornment>
+                      )
+                    }}
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    startIcon={<Refresh />}
+                    onClick={fetchData}
+                  >
+                    Refresh
+                  </Button>
+                </Box>
+              </Box>
+
+              <TableContainer>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Name</TableCell>
+                      <TableCell>Tax Rate</TableCell>
+                      <TableCell>Status</TableCell>
+                      <TableCell>Description</TableCell>
+                      <TableCell align="center">Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {filteredCategories.map((category) => (
+                      <TableRow key={category.id}>
+                        <TableCell>{category.name}</TableCell>
+                        <TableCell>{category.tax_percentage}%</TableCell>
+                        <TableCell>
+                          <Chip
+                            label={category.is_active ? 'Active' : 'Inactive'}
+                            color={category.is_active ? 'success' : 'error'}
+                            size="small"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          {category.description}
+                        </TableCell>
+                        <TableCell align="center">
+                          <IconButton
+                            color={category.is_active ? 'error' : 'success'}
+                            onClick={() => toggleCategoryStatus(category)}
+                          >
+                            {category.is_active ? <Close /> : <Check />}
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </GlassPaper>
+          </Box>
+        )}
+
+        {activeTab === 2 && (
+          <Box>
+            {/* Analytics Dashboard */}
+            <GlassPaper>
+              <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+                <Typography variant="h6">Analytics Dashboard</Typography>
+                <Box display="flex" gap={2}>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    startIcon={<FilterAlt />}
+                    onClick={() => setPdfDialogOpen(true)}
+                  >
+                    Generate Report
+                  </Button>
+                </Box>
+              </Box>
+
+              {/* Analytics Charts Placeholder */}
+              <Grid container spacing={3}>
+                <Grid item xs={12} md={6}>
+                  <GlassPaper>
+                    <Typography variant="h6" gutterBottom>
+                      User Registrations
+                    </Typography>
+                    {/* Chart would go here */}
+                    <Box height={300} bgcolor="action.hover" display="flex" alignItems="center" justifyContent="center">
+                      <Typography>User Registration Chart</Typography>
+                    </Box>
+                  </GlassPaper>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <GlassPaper>
+                    <Typography variant="h6" gutterBottom>
+                      Category Usage
+                    </Typography>
+                    {/* Chart would go here */}
+                    <Box height={300} bgcolor="action.hover" display="flex" alignItems="center" justifyContent="center">
+                      <Typography>Category Usage Chart</Typography>
+                    </Box>
+                  </GlassPaper>
+                </Grid>
+                <Grid item xs={12}>
+                  <GlassPaper>
+                    <Typography variant="h6" gutterBottom>
+                      Revenue Data
+                    </Typography>
+                    {/* Chart would go here */}
+                    <Box height={400} bgcolor="action.hover" display="flex" alignItems="center" justifyContent="center">
+                      <Typography>Revenue Data Chart</Typography>
+                    </Box>
+                  </GlassPaper>
+                </Grid>
+              </Grid>
+            </GlassPaper>
+          </Box>
+        )}
       </Container>
 
-      {/* Delete Confirmation Dialog */}
-      <Dialog
-        open={deleteDialogOpen}
-        onClose={() => setDeleteDialogOpen(false)}
-        PaperComponent={GlassPaper}
-      >
-        <DialogTitle>Confirm Delete</DialogTitle>
+      {/* PDF Generation Dialog */}
+      <Dialog open={pdfDialogOpen} onClose={() => setPdfDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Generate PDF Report</DialogTitle>
         <DialogContent>
-          <Typography>Are you sure you want to delete this category?</Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-            This action cannot be undone.
-          </Typography>
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth margin="normal">
+                <LocalizationProvider dateAdapter={AdapterDateFns}>
+                  <DatePicker
+                    label="Start Date"
+                    value={reportConfig.startDate}
+                    onChange={(date) => setReportConfig({...reportConfig, startDate: date})}
+                    renderInput={(params) => <TextField {...params} fullWidth />}
+                  />
+                </LocalizationProvider>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth margin="normal">
+                <LocalizationProvider dateAdapter={AdapterDateFns}>
+                  <DatePicker
+                    label="End Date"
+                    value={reportConfig.endDate}
+                    onChange={(date) => setReportConfig({...reportConfig, endDate: date})}
+                    renderInput={(params) => <TextField {...params} fullWidth />}
+                  />
+                </LocalizationProvider>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth margin="normal">
+                <InputLabel>Report Type</InputLabel>
+                <Select
+                  value={reportConfig.reportType}
+                  onChange={(e) => setReportConfig({...reportConfig, reportType: e.target.value})}
+                  label="Report Type"
+                >
+                  <SelectMenuItem value="summary">Summary Report</SelectMenuItem>
+                  <SelectMenuItem value="detailed">Detailed Report</SelectMenuItem>
+                  <SelectMenuItem value="custom">Custom Report</SelectMenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth margin="normal">
+                <InputLabel>PDF Options</InputLabel>
+                <TextareaAutosize
+                  minRows={3}
+                  placeholder="Additional notes for the report..."
+                  style={{ width: '100%', padding: '8px' }}
+                />
+              </FormControl>
+            </Grid>
+          </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
-          <NeonButton
-            onClick={handleDeleteCategory}
-            color="error"
-            sx={{ background: theme.palette.error.main }}
+          <Button onClick={() => setPdfDialogOpen(false)}>Cancel</Button>
+          <PDFDownloadLink
+            document={
+              <PDFDocument 
+                data={analyticsData} 
+                config={pdfConfig} 
+                reportConfig={reportConfig}
+              />
+            }
+            fileName="analytics_report.pdf"
           >
-            Delete
-          </NeonButton>
+            {({ loading }) => (
+              <Button 
+                variant="contained" 
+                color="primary" 
+                startIcon={<PictureAsPdf />}
+                disabled={loading}
+              >
+                {loading ? 'Preparing document...' : 'Download PDF'}
+              </Button>
+            )}
+          </PDFDownloadLink>
         </DialogActions>
       </Dialog>
     </Box>

@@ -1,3 +1,4 @@
+const db = require('../config/db');
 const User = require('../models/User');
 
 class UserController {
@@ -8,7 +9,9 @@ class UserController {
         return res.status(403).json({ message: 'Unauthorized' });
       }
 
-      const [users] = await db.query('SELECT id, name, email, role FROM users');
+      const [users] = await db.query(
+        'SELECT id, name, email FROM users WHERE role != "admin"'
+      );
       res.json(users);
     } catch (error) {
       console.error(error);
