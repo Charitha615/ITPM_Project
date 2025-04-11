@@ -25,4 +25,4 @@ router.patch(
   userController.cancelUserApproval
 );
 
-module.exports = router;
+module.exports = router;  

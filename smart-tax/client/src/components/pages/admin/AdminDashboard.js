@@ -8,7 +8,7 @@ import {
   useTheme, useMediaQuery, LinearProgress, Snackbar, Alert,
   Card, CardContent, Divider, Button, InputAdornment, Dialog,
   DialogTitle, DialogContent, DialogActions, FormControl, InputLabel,
-  Select, MenuItem as SelectMenuItem, TextareaAutosize, DialogContentText
+  Select, MenuItem as SelectMenuItem, TextareaAutosize
 } from '@mui/material';
 import {
   People, CheckCircle, Pending, PersonAdd, Logout,
@@ -41,13 +41,13 @@ const GlassPaper = styled(Paper)(({ theme }) => ({
 
 // Reusable components
 const SectionHeader = ({ title }) => (
-  <Typography variant="subtitle1" sx={{ 
-    fontWeight: 600, 
+  <Typography variant="subtitle1" sx={{
+    fontWeight: 600,
     mb: 2,
     color: 'text.secondary',
     borderBottom: '2px solid',
     borderColor: 'divider',
-    pb: 0.5 
+    pb: 0.5
   }}>
     {title}
   </Typography>
@@ -55,10 +55,10 @@ const SectionHeader = ({ title }) => (
 
 const InfoRow = ({ label, value }) => (
   <Box sx={{ mb: 2 }}>
-    <Typography variant="body2" sx={{ 
-      fontWeight: 500, 
+    <Typography variant="body2" sx={{
+      fontWeight: 500,
       color: 'text.secondary',
-      mb: 0.5 
+      mb: 0.5
     }}>
       {label}
     </Typography>
@@ -130,17 +130,21 @@ const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState(0);
   const [users, setUsers] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
+  const [currentCategory, setCurrentCategory] = useState({
+    id: null,
+    name: '',
+    description: '',
+    tax_percentage: '',
+    is_active: 1
+  });
+  const [isEditMode, setIsEditMode] = useState(false);
   const [stats, setStats] = useState({
     totalUsers: 0,
     approvedUsers: 0,
     pendingUsers: 0,
     totalCategories: 0,
     activeCategories: 0
-  });
-  const [analyticsData, setAnalyticsData] = useState({
-    userRegistrations: [],
-    categoryUsage: [],
-    revenueData: []
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -155,7 +159,7 @@ const AdminDashboard = () => {
   });
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
   const [pdfConfig, setPdfConfig] = useState({
-    title: 'Analytics Report',
+    title: 'Admin Report',
     includeCharts: true,
     includeTables: true
   });
@@ -178,7 +182,7 @@ const AdminDashboard = () => {
 
       // Calculate statistics
       const totalUsers = usersResponse.data.length;
-      const approvedUsers = usersResponse.data.filter(u => u.isApproved === 1).length; // Changed to check for 1
+      const approvedUsers = usersResponse.data.filter(u => u.isApproved === 1).length;
 
       setStats({
         ...stats,
@@ -188,7 +192,7 @@ const AdminDashboard = () => {
       });
 
       // Fetch categories
-      const categoriesResponse = await api.get('/api/tax-categories'); 
+      const categoriesResponse = await api.get('/api/tax-categories');
       setCategories(categoriesResponse.data);
 
       // Update category stats
@@ -200,10 +204,6 @@ const AdminDashboard = () => {
         totalCategories,
         activeCategories
       }));
-
-      // Fetch analytics data
-      const analyticsResponse = await api.get('/analytics'); 
-      setAnalyticsData(analyticsResponse.data);
 
       setError(null);
     } catch (err) {
@@ -217,7 +217,7 @@ const AdminDashboard = () => {
   const handleApproveUser = async (userId, approve) => {
     try {
       const endpoint = approve ? 'approve' : 'reject';
-      await api.patch(`/api/users/${endpoint}/${userId}`); // Changed from '/api/users' to '/users'
+      await api.patch(`/api/users/${endpoint}/${userId}`);
       setSuccess(`User ${approve ? 'approved' : 'rejected'} successfully!`);
       fetchData();
     } catch (err) {
@@ -229,7 +229,7 @@ const AdminDashboard = () => {
   const toggleCategoryStatus = async (category) => {
     try {
       const updatedCategory = { ...category, is_active: !category.is_active };
-      const response = await api.put(`/api/tax-categories/${category.id}`, updatedCategory); 
+      const response = await api.put(`/api/tax-categories/${category.id}`, updatedCategory);
       setCategories(categories.map(cat =>
         cat.id === category.id ? response.data : cat
       ));
@@ -247,18 +247,25 @@ const AdminDashboard = () => {
     }
   };
 
-  // Generate report
-  const generateReport = async () => {
-    try {
-      setLoading(true);
-      const response = await api.post('/analytics/report', reportConfig); // Changed from '/api/analytics/report' to '/analytics/report'
-      return response.data;
-    } catch (err) {
-      handleApiError(err, 'Failed to generate report');
-      return null;
-    } finally {
-      setLoading(false);
-    }
+  // Generate report data from existing state
+  const generateReportData = () => {
+    // Create user registration data
+    const userRegistrations = users.map(user => ({
+      date: new Date(user.created_at).toLocaleDateString(),
+      count: 1
+    }));
+
+    // Create category usage data
+    const categoryUsage = categories.map(category => ({
+      name: category.name,
+      count: category.tax_percentage
+    }));
+
+    return {
+      userRegistrations,
+      categoryUsage,
+      stats
+    };
   };
 
   // Handle API errors
@@ -292,6 +299,154 @@ const AdminDashboard = () => {
     category.description?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  
+
+  const CategoryFormDialog = () => (
+    <Dialog
+      open={categoryDialogOpen}
+      onClose={() => setCategoryDialogOpen(false)}
+      maxWidth="sm"
+      fullWidth
+    >
+      <DialogTitle sx={{
+        bgcolor: 'primary.main',
+        color: 'white',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        py: 2
+      }}>
+        {isEditMode ? 'Edit Tax Category' : 'Add New Tax Category'}
+        <IconButton onClick={() => setCategoryDialogOpen(false)} sx={{ color: 'white' }}>
+          <Close />
+        </IconButton>
+      </DialogTitle>
+      
+      <DialogContent sx={{ p: 3 }}>
+        <form onSubmit={handleCategorySubmit}>
+          <Grid container spacing={2}>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Category Name"
+                value={currentCategory.name}
+                onChange={(e) => setCurrentCategory({...currentCategory, name: e.target.value})}
+                required
+                margin="normal"
+              />
+            </Grid>
+            
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Tax Percentage"
+                type="number"
+                value={currentCategory.tax_percentage}
+                onChange={(e) => setCurrentCategory({...currentCategory, tax_percentage: e.target.value})}
+                required
+                margin="normal"
+                InputProps={{
+                  endAdornment: <InputAdornment position="end">%</InputAdornment>,
+                }}
+              />
+            </Grid>
+            
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Description"
+                value={currentCategory.description}
+                onChange={(e) => setCurrentCategory({...currentCategory, description: e.target.value})}
+                multiline
+                rows={3}
+                margin="normal"
+              />
+            </Grid>
+            
+            <Grid item xs={12}>
+              <FormControl fullWidth margin="normal">
+                <InputLabel>Status</InputLabel>
+                <Select
+                  value={currentCategory.is_active}
+                  onChange={(e) => setCurrentCategory({...currentCategory, is_active: e.target.value})}
+                  label="Status"
+                >
+                  <MenuItem value={1}>Active</MenuItem>
+                  <MenuItem value={0}>Inactive</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+          </Grid>
+          
+          <DialogActions sx={{ mt: 2 }}>
+            <Button onClick={() => setCategoryDialogOpen(false)}>Cancel</Button>
+            <Button type="submit" variant="contained" color="primary">
+              {isEditMode ? 'Update' : 'Create'}
+            </Button>
+          </DialogActions>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+
+  const handleAddCategory = () => {
+    setCurrentCategory({
+      id: null,
+      name: '',
+      description: '',
+      tax_percentage: '',
+      is_active: 1
+    });
+    setIsEditMode(false);
+    setCategoryDialogOpen(true);
+  };
+  
+  const handleEditCategory = (category) => {
+    setCurrentCategory({
+      id: category.id,
+      name: category.name,
+      description: category.description,
+      tax_percentage: category.tax_percentage,
+      is_active: category.is_active
+    });
+    setIsEditMode(true);
+    setCategoryDialogOpen(true);
+  };
+  
+  const handleDeleteCategory = async (categoryId) => {
+    try {
+      await api.delete(`/api/tax-categories/${categoryId}`);
+      setSuccess('Category deleted successfully!');
+      fetchData();
+    } catch (err) {
+      handleApiError(err, 'Failed to delete category');
+    }
+  };
+  
+  const handleCategorySubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const categoryData = {
+        name: currentCategory.name,
+        description: currentCategory.description,
+        tax_percentage: parseFloat(currentCategory.tax_percentage),
+        is_active: currentCategory.is_active
+      };
+  
+      if (isEditMode) {
+        await api.put(`/api/tax-categories/${currentCategory.id}`, categoryData);
+        setSuccess('Category updated successfully!');
+      } else {
+        await api.post('/api/tax-categories', categoryData);
+        setSuccess('Category created successfully!');
+      }
+      
+      setCategoryDialogOpen(false);
+      fetchData();
+    } catch (err) {
+      handleApiError(err, `Failed to ${isEditMode ? 'update' : 'create'} category`);
+    }
+  };
   // Set up interceptors and initial data fetch
   useEffect(() => {
     const requestInterceptor = api.interceptors.request.use(
@@ -344,9 +499,9 @@ const AdminDashboard = () => {
             ADMIN DASHBOARD
           </Typography>
 
-          <IconButton color="inherit">
+          {/* <IconButton color="inherit">
             {theme.palette.mode === 'dark' ? <LightMode /> : <DarkMode />}
-          </IconButton>
+          </IconButton> */}
 
           <IconButton color="inherit" onClick={(e) => setAnchorEl(e.currentTarget)}>
             <Avatar sx={{
@@ -399,7 +554,7 @@ const AdminDashboard = () => {
           >
             <Tab label="Users" icon={<People />} iconPosition="start" />
             <Tab label="Tax Categories" icon={<Category />} iconPosition="start" />
-            <Tab label="Analytics" icon={<InsertChart />} iconPosition="start" />
+            <Tab label="Reports" icon={<InsertChart />} iconPosition="start" />
           </Tabs>
         </GlassPaper>
 
@@ -529,7 +684,6 @@ const AdminDashboard = () => {
                   borderColor: 'divider'
                 }}>
                   <Box display="flex" alignItems="center">
-                    {/* <Person fontSize="medium" sx={{ mr: 1.5 }} /> */}
                     User Profile
                   </Box>
                   <IconButton onClick={() => setOpenDialog(false)} sx={{ color: 'white' }}>
@@ -585,148 +739,433 @@ const AdminDashboard = () => {
           </Box>
         )}
 
-        {activeTab === 1 && (
-          <Box>
-            {/* Tax Categories Statistics */}
-            <Grid container spacing={3} sx={{ mb: 3 }}>
-              <Grid item xs={12} md={6}>
-                <StatCard
-                  title="Total Categories"
-                  value={stats.totalCategories}
-                  icon={<Category fontSize="large" />}
-                  color="info"
-                />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <StatCard
-                  title="Active Categories"
-                  value={stats.activeCategories}
-                  icon={<CheckCircle fontSize="large" />}
-                  color="success"
-                />
-              </Grid>
-            </Grid>
+{activeTab === 1 && (
+  <Box>
+    {/* Tax Categories Statistics */}
+    <Grid container spacing={3} sx={{ mb: 3 }}>
+      <Grid item xs={12} md={6}>
+        <StatCard
+          title="Total Categories"
+          value={stats.totalCategories}
+          icon={<Category fontSize="large" />}
+          color="info"
+        />
+      </Grid>
+      <Grid item xs={12} md={6}>
+        <StatCard
+          title="Active Categories"
+          value={stats.activeCategories}
+          icon={<CheckCircle fontSize="large" />}
+          color="success"
+        />
+      </Grid>
+    </Grid>
 
-            {/* Tax Categories Management */}
-            <GlassPaper>
-              <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                <Typography variant="h6">Tax Categories</Typography>
-                <Box display="flex" gap={2}>
-                  <TextField
+    {/* Tax Categories Management */}
+    <GlassPaper>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+        <Typography variant="h6">Tax Categories</Typography>
+        <Box display="flex" gap={2}>
+          <TextField
+            size="small"
+            placeholder="Search categories..."
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Search />
+                </InputAdornment>
+              )
+            }}
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<PersonAdd />}
+            onClick={handleAddCategory}
+          >
+            Add Category
+          </Button>
+          <Button
+            variant="outlined"
+            color="primary"
+            startIcon={<Refresh />}
+            onClick={fetchData}
+          >
+            Refresh
+          </Button>
+        </Box>
+      </Box>
+
+      <TableContainer>
+        <Table>
+          <TableHead>
+            <TableRow>
+              <TableCell>Name</TableCell>
+              <TableCell>Tax Rate</TableCell>
+              <TableCell>Status</TableCell>
+              <TableCell>Description</TableCell>
+              <TableCell align="center">Actions</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {filteredCategories.map((category) => (
+              <TableRow key={category.id}>
+                <TableCell>{category.name}</TableCell>
+                <TableCell>{category.tax_percentage}%</TableCell>
+                <TableCell>
+                  <Chip
+                    label={category.is_active ? 'Active' : 'Inactive'}
+                    color={category.is_active ? 'success' : 'error'}
                     size="small"
-                    placeholder="Search categories..."
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <Search />
-                        </InputAdornment>
-                      )
-                    }}
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
                   />
-                  <Button
-                    variant="contained"
+                </TableCell>
+                <TableCell>
+                  {category.description}
+                </TableCell>
+                <TableCell align="center">
+                  <IconButton
                     color="primary"
-                    startIcon={<Refresh />}
-                    onClick={fetchData}
+                    onClick={() => handleEditCategory(category)}
                   >
-                    Refresh
-                  </Button>
-                </Box>
-              </Box>
+                    <Edit />
+                  </IconButton>
+                  <IconButton
+                    color="error"
+                    onClick={() => handleDeleteCategory(category.id)}
+                  >
+                    <Delete />
+                  </IconButton>
+                  <IconButton
+                    color={category.is_active ? 'error' : 'success'}
+                    onClick={() => toggleCategoryStatus(category)}
+                  >
+                    {category.is_active ? <Close /> : <Check />}
+                  </IconButton>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </GlassPaper>
 
-              <TableContainer>
-                <Table>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Name</TableCell>
-                      <TableCell>Tax Rate</TableCell>
-                      <TableCell>Status</TableCell>
-                      <TableCell>Description</TableCell>
-                      <TableCell align="center">Actions</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {filteredCategories.map((category) => (
-                      <TableRow key={category.id}>
-                        <TableCell>{category.name}</TableCell>
-                        <TableCell>{category.tax_percentage}%</TableCell>
-                        <TableCell>
-                          <Chip
-                            label={category.is_active ? 'Active' : 'Inactive'}
-                            color={category.is_active ? 'success' : 'error'}
-                            size="small"
-                          />
-                        </TableCell>
-                        <TableCell>
-                          {category.description}
-                        </TableCell>
-                        <TableCell align="center">
-                          <IconButton
-                            color={category.is_active ? 'error' : 'success'}
-                            onClick={() => toggleCategoryStatus(category)}
-                          >
-                            {category.is_active ? <Close /> : <Check />}
-                          </IconButton>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </GlassPaper>
-          </Box>
-        )}
+    {/* Render the category form dialog */}
+    <CategoryFormDialog />
+  </Box>
+)}
 
         {activeTab === 2 && (
           <Box>
-            {/* Analytics Dashboard */}
+            {/* Reports Dashboard */}
             <GlassPaper>
               <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-                <Typography variant="h6">Analytics Dashboard</Typography>
-                <Box display="flex" gap={2}>
+                <Typography variant="h6">System Reports</Typography>
+                {/* <Box display="flex" gap={2}>
                   <Button
                     variant="contained"
                     color="primary"
-                    startIcon={<FilterAlt />}
+                    startIcon={<PictureAsPdf />}
                     onClick={() => setPdfDialogOpen(true)}
                   >
-                    Generate Report
+                    Generate PDF Report
                   </Button>
-                </Box>
+                </Box> */}
               </Box>
 
-              {/* Analytics Charts Placeholder */}
+              {/* Summary Statistics */}
+              <Grid container spacing={3} sx={{ mb: 3 }}>
+                <Grid item xs={12} md={4}>
+                  <GlassPaper>
+                    <Typography variant="h6" gutterBottom>
+                      User Statistics
+                    </Typography>
+                    <Box>
+                      <InfoRow label="Total Users" value={stats.totalUsers} />
+                      <InfoRow label="Approved Users" value={stats.approvedUsers} />
+                      <InfoRow label="Pending Users" value={stats.pendingUsers} />
+                    </Box>
+                  </GlassPaper>
+                </Grid>
+                <Grid item xs={12} md={4}>
+                  <GlassPaper>
+                    <Typography variant="h6" gutterBottom>
+                      Category Statistics
+                    </Typography>
+                    <Box>
+                      <InfoRow label="Total Categories" value={stats.totalCategories} />
+                      <InfoRow label="Active Categories" value={stats.activeCategories} />
+                      <InfoRow label="Inactive Categories" value={stats.totalCategories - stats.activeCategories} />
+                    </Box>
+                  </GlassPaper>
+                </Grid>
+                <Grid item xs={12} md={4}>
+                  <GlassPaper>
+                    <Typography variant="h6" gutterBottom>
+                      Recent Activity
+                    </Typography>
+                    <Box>
+                      <InfoRow
+                        label="New Users (Last 30 days)"
+                        value={
+                          users.filter(u =>
+                            new Date(u.created_at) > new Date(new Date().setDate(new Date().getDate() - 30))
+                          ).length
+                        }
+                      />
+                      <InfoRow
+                        label="Updated Categories (Last 30 days)"
+                        value={
+                          categories.filter(c =>
+                            new Date(c.updated_at) > new Date(new Date().setDate(new Date().getDate() - 30))
+                          ).length
+                        }
+                      />
+                    </Box>
+
+                  </GlassPaper>
+                </Grid>
+              </Grid>
+
+              {/* Data Tables */}
               <Grid container spacing={3}>
                 <Grid item xs={12} md={6}>
                   <GlassPaper>
-                    <Typography variant="h6" gutterBottom>
-                      User Registrations
-                    </Typography>
-                    <Box height={300} bgcolor="action.hover" display="flex" alignItems="center" justifyContent="center">
-                      <Typography>User Registration Chart</Typography>
+                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                      <Typography variant="h6" gutterBottom>
+                        Recent Users
+                      </Typography>
+                      <Box display="flex" gap={1}>
+                        <DatePicker
+                          selected={reportConfig.usersStartDate || reportConfig.startDate}
+                          onChange={(date) => setReportConfig({ ...reportConfig, usersStartDate: date })}
+                          selectsStart
+                          startDate={reportConfig.usersStartDate || reportConfig.startDate}
+                          endDate={reportConfig.usersEndDate || reportConfig.endDate}
+                          customInput={
+                            <TextField
+                              size="small"
+                              sx={{ width: 120 }}
+                              InputProps={{
+                                startAdornment: (
+                                  <InputAdornment position="start">
+                                    <FilterAlt fontSize="small" />
+                                  </InputAdornment>
+                                ),
+                              }}
+                            />
+                          }
+                        />
+                        <DatePicker
+                          selected={reportConfig.usersEndDate || reportConfig.endDate}
+                          onChange={(date) => setReportConfig({ ...reportConfig, usersEndDate: date })}
+                          selectsEnd
+                          startDate={reportConfig.usersStartDate || reportConfig.startDate}
+                          endDate={reportConfig.usersEndDate || reportConfig.endDate}
+                          minDate={reportConfig.usersStartDate || reportConfig.startDate}
+                          customInput={
+                            <TextField
+                              size="small"
+                              sx={{ width: 120 }}
+                              InputProps={{
+                                startAdornment: (
+                                  <InputAdornment position="start">
+                                    <FilterAlt fontSize="small" />
+                                  </InputAdornment>
+                                ),
+                              }}
+                            />
+                          }
+                        />
+                        <PDFDownloadLink
+                          document={
+                            <PDFDocument
+                              data={{
+                                title: 'Recent Users Report',
+                                users: users.filter(user => {
+                                  const userDate = new Date(user.created_at);
+                                  const startDate = reportConfig.usersStartDate || reportConfig.startDate;
+                                  const endDate = reportConfig.usersEndDate || reportConfig.endDate;
+                                  return userDate >= startDate && userDate <= endDate;
+                                }),
+                                type: 'users'
+                              }}
+                              config={{
+                                title: 'Recent Users Report',
+                                includeTables: true
+                              }}
+                            />
+                          }
+                          fileName="recent_users_report.pdf"
+                        >
+                          {({ loading }) => (
+                            <Button
+                              variant="outlined"
+                              size="small"
+                              startIcon={<PictureAsPdf />}
+                              disabled={loading}
+                            >
+                              {loading ? '...' : 'PDF'}
+                            </Button>
+                          )}
+                        </PDFDownloadLink>
+                      </Box>
                     </Box>
+                    <TableContainer>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>Name</TableCell>
+                            <TableCell>Status</TableCell>
+                            <TableCell>Date</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {users
+                            .filter(user => {
+                              const userDate = new Date(user.created_at);
+                              const startDate = reportConfig.usersStartDate || reportConfig.startDate;
+                              const endDate = reportConfig.usersEndDate || reportConfig.endDate;
+                              return userDate >= startDate && userDate <= endDate;
+                            })
+                            .slice(0, 5)
+                            .map(user => (
+                              <TableRow key={user.id}>
+                                <TableCell>{user.name}</TableCell>
+                                <TableCell>
+                                  <Chip
+                                    label={user.isApproved ? 'Approved' : 'Pending'}
+                                    size="small"
+                                    color={user.isApproved ? 'success' : 'warning'}
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  {new Date(user.created_at).toLocaleDateString()}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
                   </GlassPaper>
                 </Grid>
                 <Grid item xs={12} md={6}>
                   <GlassPaper>
-                    <Typography variant="h6" gutterBottom>
-                      Category Usage
-                    </Typography>
-                    <Box height={300} bgcolor="action.hover" display="flex" alignItems="center" justifyContent="center">
-                      <Typography>Category Usage Chart</Typography>
+                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                      <Typography variant="h6" gutterBottom>
+                        Recent Categories
+                      </Typography>
+                      <Box display="flex" gap={1}>
+                        <DatePicker
+                          selected={reportConfig.categoriesStartDate || reportConfig.startDate}
+                          onChange={(date) => setReportConfig({ ...reportConfig, categoriesStartDate: date })}
+                          selectsStart
+                          startDate={reportConfig.categoriesStartDate || reportConfig.startDate}
+                          endDate={reportConfig.categoriesEndDate || reportConfig.endDate}
+                          customInput={
+                            <TextField
+                              size="small"
+                              sx={{ width: 120 }}
+                              InputProps={{
+                                startAdornment: (
+                                  <InputAdornment position="start">
+                                    <FilterAlt fontSize="small" />
+                                  </InputAdornment>
+                                ),
+                              }}
+                            />
+                          }
+                        />
+                        <DatePicker
+                          selected={reportConfig.categoriesEndDate || reportConfig.endDate}
+                          onChange={(date) => setReportConfig({ ...reportConfig, categoriesEndDate: date })}
+                          selectsEnd
+                          startDate={reportConfig.categoriesStartDate || reportConfig.startDate}
+                          endDate={reportConfig.categoriesEndDate || reportConfig.endDate}
+                          minDate={reportConfig.categoriesStartDate || reportConfig.startDate}
+                          customInput={
+                            <TextField
+                              size="small"
+                              sx={{ width: 120 }}
+                              InputProps={{
+                                startAdornment: (
+                                  <InputAdornment position="start">
+                                    <FilterAlt fontSize="small" />
+                                  </InputAdornment>
+                                ),
+                              }}
+                            />
+                          }
+                        />
+                        <PDFDownloadLink
+                          document={
+                            <PDFDocument
+                              data={{
+                                title: 'Recent Categories Report',
+                                categories: categories.filter(category => {
+                                  const categoryDate = new Date(category.created_at);
+                                  const startDate = reportConfig.categoriesStartDate || reportConfig.startDate;
+                                  const endDate = reportConfig.categoriesEndDate || reportConfig.endDate;
+                                  return categoryDate >= startDate && categoryDate <= endDate;
+                                }),
+                                type: 'categories'
+                              }}
+                              config={{
+                                title: 'Recent Categories Report',
+                                includeTables: true
+                              }}
+                            />
+                          }
+                          fileName="recent_categories_report.pdf"
+                        >
+                          {({ loading }) => (
+                            <Button
+                              variant="outlined"
+                              size="small"
+                              startIcon={<PictureAsPdf />}
+                              disabled={loading}
+                            >
+                              {loading ? '...' : 'PDF'}
+                            </Button>
+                          )}
+                        </PDFDownloadLink>
+                      </Box>
                     </Box>
-                  </GlassPaper>
-                </Grid>
-                <Grid item xs={12}>
-                  <GlassPaper>
-                    <Typography variant="h6" gutterBottom>
-                      Revenue Data
-                    </Typography>
-                    <Box height={400} bgcolor="action.hover" display="flex" alignItems="center" justifyContent="center">
-                      <Typography>Revenue Data Chart</Typography>
-                    </Box>
+                    <TableContainer>
+                      <Table size="small">
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>Name</TableCell>
+                            <TableCell>Rate</TableCell>
+                            <TableCell>Status</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {categories
+                            .filter(category => {
+                              const categoryDate = new Date(category.created_at);
+                              const startDate = reportConfig.categoriesStartDate || reportConfig.startDate;
+                              const endDate = reportConfig.categoriesEndDate || reportConfig.endDate;
+                              return categoryDate >= startDate && categoryDate <= endDate;
+                            })
+                            .slice(0, 5)
+                            .map(category => (
+                              <TableRow key={category.id}>
+                                <TableCell>{category.name}</TableCell>
+                                <TableCell>{category.tax_percentage}%</TableCell>
+                                <TableCell>
+                                  <Chip
+                                    label={category.is_active ? 'Active' : 'Inactive'}
+                                    size="small"
+                                    color={category.is_active ? 'success' : 'error'}
+                                  />
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
                   </GlassPaper>
                 </Grid>
               </Grid>
@@ -781,7 +1220,37 @@ const AdminDashboard = () => {
             </Grid>
             <Grid item xs={12}>
               <FormControl fullWidth margin="normal">
-                <InputLabel>PDF Options</InputLabel>
+                <InputLabel>Report Sections</InputLabel>
+                <Select
+                  multiple
+                  value={Object.keys(pdfConfig).filter(key => pdfConfig[key])}
+                  onChange={(e) => {
+                    const newConfig = { ...pdfConfig };
+                    Object.keys(pdfConfig).forEach(key => {
+                      newConfig[key] = e.target.value.includes(key);
+                    });
+                    setPdfConfig(newConfig);
+                  }}
+                  renderValue={(selected) => selected.join(', ')}
+                >
+                  <SelectMenuItem value="includeCharts">Include Charts</SelectMenuItem>
+                  <SelectMenuItem value="includeTables">Include Data Tables</SelectMenuItem>
+                  <SelectMenuItem value="includeUserDetails">Include User Details</SelectMenuItem>
+                  <SelectMenuItem value="includeCategoryDetails">Include Category Details</SelectMenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth margin="normal">
+                <TextField
+                  label="Report Title"
+                  value={pdfConfig.title}
+                  onChange={(e) => setPdfConfig({ ...pdfConfig, title: e.target.value })}
+                />
+              </FormControl>
+            </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth margin="normal">
                 <TextareaAutosize
                   minRows={3}
                   placeholder="Additional notes for the report..."
@@ -796,12 +1265,12 @@ const AdminDashboard = () => {
           <PDFDownloadLink
             document={
               <PDFDocument
-                data={analyticsData}
+                data={generateReportData()}
                 config={pdfConfig}
                 reportConfig={reportConfig}
               />
             }
-            fileName="analytics_report.pdf"
+            fileName="admin_report.pdf"
           >
             {({ loading }) => (
               <Button

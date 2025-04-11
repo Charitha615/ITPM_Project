@@ -1,9 +1,8 @@
-import React from 'react';
-import { Page, Text, View, Document, StyleSheet, PDFViewer, Image } from '@react-pdf/renderer';
-import { Chart } from 'react-chartjs-2';
-import logo from '../../assets/img/logo.jpg';
+// PDFDocument.js (updated version)
 
-// Create styles
+import React from 'react';
+import { Page, Text, View, Document, StyleSheet, Image } from '@react-pdf/renderer';
+
 const styles = StyleSheet.create({
   page: {
     flexDirection: 'column',
@@ -16,7 +15,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#EEEEEE',  
+    borderBottomColor: '#EEEEEE',
     paddingBottom: 10
   },
   title: {
@@ -49,7 +48,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row'
   },
   tableColHeader: {
-    width: '25%',
+    width: '33%',
     borderStyle: 'solid',
     borderWidth: 1,
     borderLeftWidth: 0,
@@ -57,7 +56,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F5F5F5'
   },
   tableCol: {
-    width: '25%',
+    width: '33%',
     borderStyle: 'solid',
     borderWidth: 1,
     borderLeftWidth: 0,
@@ -71,11 +70,6 @@ const styles = StyleSheet.create({
   tableCell: {
     margin: 5,
     fontSize: 10
-  },
-  chartContainer: {
-    width: '100%',
-    height: 200,
-    marginBottom: 20
   },
   footer: {
     position: 'absolute',
@@ -91,72 +85,70 @@ const styles = StyleSheet.create({
   }
 });
 
-// Create Document Component
-export const PDFDocument = ({ data, config, reportConfig }) => (
+export const PDFDocument = ({ data, config }) => (
   <Document>
     <Page size="A4" style={styles.page}>
       <View style={styles.header}>
         <Text style={styles.title}>{config.title}</Text>
-        <Image style={styles.logo} src={logo} />
+        {/* Add your logo here if needed */}
+        {/* <Image style={styles.logo} src={logo} /> */}
       </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Report Details</Text>
-        <Text>Date Range: {reportConfig.startDate.toLocaleDateString()} - {reportConfig.endDate.toLocaleDateString()}</Text>
-        <Text>Report Type: {reportConfig.reportType}</Text>
-      </View>
-
-      {config.includeCharts && (
-        <>
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>User Registrations</Text>
-            <View style={styles.chartContainer}>
-              {/* Chart would be rendered as an image here */}
-              <Text>[User Registration Chart]</Text>
-            </View>
-          </View>
-
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Category Usage</Text>
-            <View style={styles.chartContainer}>
-              {/* Chart would be rendered as an image here */}
-              <Text>[Category Usage Chart]</Text>
-            </View>
-          </View>
-        </>
-      )}
-
-      {config.includeTables && (
+      {data.type === 'users' ? (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Detailed Data</Text>
+          <Text style={styles.sectionTitle}>Recent Users</Text>
           <View style={styles.table}>
             <View style={styles.tableRow}>
               <View style={styles.tableColHeader}>
+                <Text style={styles.tableCellHeader}>Name</Text>
+              </View>
+              <View style={styles.tableColHeader}>
+                <Text style={styles.tableCellHeader}>Status</Text>
+              </View>
+              <View style={styles.tableColHeader}>
                 <Text style={styles.tableCellHeader}>Date</Text>
               </View>
-              <View style={styles.tableColHeader}>
-                <Text style={styles.tableCellHeader}>Users</Text>
-              </View>
-              <View style={styles.tableColHeader}>
-                <Text style={styles.tableCellHeader}>Categories</Text>
-              </View>
-              <View style={styles.tableColHeader}>
-                <Text style={styles.tableCellHeader}>Revenue</Text>
-              </View>
             </View>
-            {data.userRegistrations.map((item, index) => (
+            {data.users.map((user, index) => (
               <View style={styles.tableRow} key={index}>
                 <View style={styles.tableCol}>
-                  <Text style={styles.tableCell}>{item.date}</Text>
+                  <Text style={styles.tableCell}>{user.name}</Text>
                 </View>
                 <View style={styles.tableCol}>
-                  <Text style={styles.tableCell}>{item.count}</Text>
+                  <Text style={styles.tableCell}>{user.isApproved ? 'Approved' : 'Pending'}</Text>
                 </View>
                 <View style={styles.tableCol}>
-                  <Text style={styles.tableCell}>{data.categoryUsage[index]?.count || 0}</Text>
+                  <Text style={styles.tableCell}>{new Date(user.created_at).toLocaleDateString()}</Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Recent Categories</Text>
+          <View style={styles.table}>
+            <View style={styles.tableRow}>
+              <View style={styles.tableColHeader}>
+                <Text style={styles.tableCellHeader}>Name</Text>
+              </View>
+              <View style={styles.tableColHeader}>
+                <Text style={styles.tableCellHeader}>Rate</Text>
+              </View>
+              <View style={styles.tableColHeader}>
+                <Text style={styles.tableCellHeader}>Status</Text>
+              </View>
+            </View>
+            {data.categories.map((category, index) => (
+              <View style={styles.tableRow} key={index}>
+                <View style={styles.tableCol}>
+                  <Text style={styles.tableCell}>{category.name}</Text>
                 </View>
                 <View style={styles.tableCol}>
-                  <Text style={styles.tableCell}>${data.revenueData[index]?.amount || 0}</Text>
+                  <Text style={styles.tableCell}>{category.tax_percentage}%</Text>
+                </View>
+                <View style={styles.tableCol}>
+                  <Text style={styles.tableCell}>{category.is_active ? 'Active' : 'Inactive'}</Text>
                 </View>
               </View>
             ))}
