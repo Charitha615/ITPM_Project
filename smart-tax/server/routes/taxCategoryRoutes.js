@@ -3,7 +3,7 @@ const router = express.Router();
 const authMiddleware = require('../middlewares/authMiddleware');
 const taxCategoryController = require('../controllers/taxCategory.controller');
 
-router.get('/', authMiddleware.protect,taxCategoryController.getAllTaxCategories);
+router.get('/', taxCategoryController.getAllTaxCategories);
 
 router.get('/:id', authMiddleware.protect,taxCategoryController.getTaxCategoryById);
 

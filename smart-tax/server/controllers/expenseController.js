@@ -1,0 +1,93 @@
+const Expense = require('../models/Expense');
+const upload = require('../utils/upload.js');
+
+const expenseController = {
+  getExpenses: async (req, res) => {
+    try {
+      const filters = {
+        category: req.query.category,
+        dateFrom: req.query.dateFrom,
+        dateTo: req.query.dateTo,
+        amountMin: req.query.amountMin,
+        amountMax: req.query.amountMax
+      };
+
+      const expenses = await Expense.findAll(req.user.id, filters);
+      res.json(expenses);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: 'Server error' });
+    }
+  },
+
+  createExpense: async (req, res) => {
+    try {
+      const { description, amount, date, category, expenseType, is_recurring, recurring_day, setup_auto_pay, card_details } = req.body;
+
+      let receipt_path = null;
+      if (req.file) {
+        receipt_path = req.file.path;
+      }
+
+      const expenseId = await Expense.create({
+        user_id: req.user.id,
+        description,
+        amount,
+        date,
+        category_id:category,
+        expense_type:expenseType,
+        receipt_path,
+        is_recurring,
+        recurring_day,
+        card_details: setup_auto_pay ? card_details : null
+      });
+
+      res.status(201).json({ id: expenseId });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: 'Server error' });
+    }
+  },
+
+  updateExpense: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { description, amount, date, category_id, expense_type, is_recurring, recurring_day, setup_auto_pay, card_details } = req.body;
+
+      let receipt_path = null;
+      if (req.file) {
+        receipt_path = req.file.path;
+      }
+
+      await Expense.update(id, req.user.id, {
+        description,
+        amount,
+        date,
+        category_id,
+        expense_type,
+        receipt_path,
+        is_recurring,
+        recurring_day,
+        card_details: setup_auto_pay ? card_details : null
+      });
+
+      res.json({ message: 'Expense updated successfully' });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: 'Server error' });
+    }
+  },
+
+  deleteExpense: async (req, res) => {
+    try {
+      const { id } = req.params;
+      await Expense.delete(id, req.user.id);
+      res.json({ message: 'Expense deleted successfully' });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: 'Server error' });
+    }
+  }
+};
+
+module.exports = expenseController;

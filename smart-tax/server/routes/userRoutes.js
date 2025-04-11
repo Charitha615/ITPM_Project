@@ -10,4 +10,19 @@ router.get(
   userController.getAllUsers
 );
 
-module.exports = router;
+// Add these new routes
+router.patch(
+  '/approve/:id',
+  authMiddleware.protect,
+  authMiddleware.restrictTo('admin'),
+  userController.approveUser
+);
+
+router.patch(
+  '/reject/:id',
+  authMiddleware.protect,
+  authMiddleware.restrictTo('admin'),
+  userController.cancelUserApproval
+);
+
+module.exports = router;  
