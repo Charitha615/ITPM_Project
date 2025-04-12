@@ -29,15 +29,19 @@ const expenseController = {
         receipt_path = req.file.path;
       }
 
+      // Convert the frontend date string to a MySQL compatible format
+      const mysqlDate = new Date(date).toISOString().slice(0, 19).replace('T', ' ');
+      // Example output: "2025-04-12 09:05:38" (UTC time)
+
       const expenseId = await Expense.create({
         user_id: req.user.id,
         description,
         amount,
-        date,
-        category_id:category,
-        expense_type:expenseType,
+        date: mysqlDate, // Use the converted date
+        category_id: category,
+        expense_type: expenseType,
         receipt_path,
-        is_recurring,
+        is_recurring: is_recurring,
         recurring_day,
         card_details: setup_auto_pay ? card_details : null
       });
