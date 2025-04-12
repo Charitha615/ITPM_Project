@@ -18,6 +18,7 @@ app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/users', require('./routes/userRoutes'));
 app.use('/api/tax-categories', require('./routes/taxCategoryRoutes'));
 app.use('/api/expenses', require('./routes/expenseRoutes'));
+app.use('/uploads', express.static('uploads'));
 
 
 // Test route

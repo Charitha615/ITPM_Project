@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api';
 import { format } from 'date-fns';
+import { jsPDF } from 'jspdf';
+import 'jspdf-autotable';
 import {
     AppBar,
     Toolbar,
@@ -63,7 +65,8 @@ import {
     MonetizationOn as MonetizationOnIcon,
     Autorenew as AutorenewIcon,
     FilePresent as FilePresentIcon,
-    FiberManualRecord as FiberManualRecordIcon
+    FiberManualRecord as FiberManualRecordIcon,
+    PictureAsPdf as PdfIcon
 } from '@mui/icons-material';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -122,9 +125,15 @@ const StyledTableRow = styled(TableRow)(({ theme }) => ({
     }
 }));
 
+const BACKEND_BASE_URL = "http://localhost:5000/";
+
+
+
 const UserDashboard = () => {
     const [taxCategories, setTaxCategories] = useState([]);
     const [expenses, setExpenses] = useState([]);
+    const [filteredExpenses, setFilteredExpenses] = useState([]);
+    const [userDetails, setUserDetails] = useState(null);
     const [openDrawer, setOpenDrawer] = useState(true);
     const [openExpenseModal, setOpenExpenseModal] = useState(false);
     const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
@@ -157,6 +166,15 @@ const UserDashboard = () => {
 
     const navigate = useNavigate();
 
+    const fetchUserDetails = async () => {
+        try {
+            const response = await api.get('/api/auth/me');
+            setUserDetails(response.data);
+        } catch (error) {
+            console.error('Error fetching user details:', error);
+        }
+    };
+
     const fetchData = async () => {
         try {
             setLoading(true);
@@ -166,6 +184,7 @@ const UserDashboard = () => {
             ]);
 
             setExpenses(expensesRes.data);
+            setFilteredExpenses(expensesRes.data);
             const categoriesArray = Object.values(categoriesRes.data);
             const activeCats = categoriesArray.filter(cat => cat.is_active === 1);
             setTaxCategories(activeCats);
@@ -214,6 +233,7 @@ const UserDashboard = () => {
         );
 
         fetchData();
+        fetchUserDetails();
 
         return () => {
             api.interceptors.request.eject(requestInterceptor);
@@ -225,10 +245,157 @@ const UserDashboard = () => {
         try {
             const response = await api.get('/api/expenses');
             setExpenses(response.data);
+            setFilteredExpenses(response.data);
         } catch (error) {
             console.error('Error fetching expenses:', error);
         }
     };
+
+    const applyFilters = () => {
+        let result = [...expenses];
+
+        if (filters.category) {
+            result = result.filter(expense => expense.category_id == filters.category);
+        }
+
+        if (filters.dateFrom) {
+            result = result.filter(expense => new Date(expense.date) >= new Date(filters.dateFrom));
+        }
+
+        if (filters.dateTo) {
+            result = result.filter(expense => new Date(expense.date) <= new Date(filters.dateTo));
+        }
+
+        if (filters.amountMin) {
+            result = result.filter(expense => Number(expense.amount) >= Number(filters.amountMin));
+        }
+
+        if (filters.amountMax) {
+            result = result.filter(expense => Number(expense.amount) <= Number(filters.amountMax));
+        }
+
+        setFilteredExpenses(result);
+    };
+
+    const resetFilters = () => {
+        setFilters({
+            category: '',
+            dateFrom: null,
+            dateTo: null,
+            amountMin: '',
+            amountMax: ''
+        });
+        setFilteredExpenses(expenses);
+    };
+
+    const generateReport = () => {
+        // Import jsPDF and autoTable dynamically to avoid SSR issues
+        import('jspdf').then(({ default: jsPDF }) => {
+            import('jspdf-autotable').then((autoTable) => {
+                const doc = new jsPDF();
+
+                // Add report title
+                doc.setFontSize(18);
+                doc.text('Expense Report', 105, 15, { align: 'center' });
+
+                // Add user details
+                doc.setFontSize(12);
+                if (userDetails) {
+                    doc.text(`Name: ${userDetails.name}`, 14, 25);
+                    doc.text(`Email: ${userDetails.email}`, 14, 35);
+                    doc.text(`Generated on: ${format(new Date(), 'MMM dd, yyyy')}`, 14, 45);
+                }
+
+                // Add filter criteria
+                doc.setFontSize(14);
+                doc.text('Filter Criteria', 14, 60);
+                doc.setFontSize(10);
+
+                let filterText = 'All expenses';
+                if (
+                    filters.category || filters.dateFrom || filters.dateTo ||
+                    filters.amountMin || filters.amountMax
+                ) {
+                    filterText = 'Filtered by: ';
+                    const filtersApplied = [];
+
+                    if (filters.category) {
+                        const category = taxCategories.find(cat => cat.id == filters.category);
+                        filtersApplied.push(`Category: ${category?.name || filters.category}`);
+                    }
+
+                    if (filters.dateFrom) {
+                        filtersApplied.push(`From: ${format(new Date(filters.dateFrom), 'MMM dd, yyyy')}`);
+                    }
+
+                    if (filters.dateTo) {
+                        filtersApplied.push(`To: ${format(new Date(filters.dateTo), 'MMM dd, yyyy')}`);
+                    }
+
+                    if (filters.amountMin) {
+                        filtersApplied.push(`Min Amount: $${filters.amountMin}`);
+                    }
+
+                    if (filters.amountMax) {
+                        filtersApplied.push(`Max Amount: $${filters.amountMax}`);
+                    }
+
+                    filterText += filtersApplied.join(', ');
+                }
+
+                doc.text(filterText, 14, 70);
+
+                // Add expenses table
+                autoTable.default(doc, {
+                    startY: 80,
+                    head: [['Date', 'Description', 'Category', 'Amount', 'Tax', 'Type']],
+                    body: filteredExpenses.map(expense => [
+                        format(new Date(expense.date), 'MMM dd, yyyy'),
+                        expense.description,
+                        expense.category_name,
+                        `$${Number(expense.amount).toFixed(2)}`,
+                        `$${(Number(expense.amount) * (Number(expense.tax_percentage) / 100)).toFixed(2)}`,
+                        expense.expense_type === 'recurring'
+                            ? `Recurring (Day ${expense.recurring_day})`
+                            : expense.expense_type
+                    ]),
+                    theme: 'grid',
+                    headStyles: {
+                        fillColor: [63, 81, 181],
+                        textColor: 255,
+                        fontStyle: 'bold'
+                    },
+                    alternateRowStyles: {
+                        fillColor: [240, 240, 240]
+                    }
+                });
+
+                // Add summary
+                const totalAmount = filteredExpenses.reduce(
+                    (sum, expense) => sum + Number(expense.amount), 0
+                );
+
+                const totalTax = filteredExpenses.reduce(
+                    (sum, expense) => sum + (Number(expense.amount) * (Number(expense.tax_percentage) / 100)), 0
+                );
+
+                const finalY = doc.lastAutoTable.finalY || 100;
+
+                doc.setFontSize(14);
+                doc.text('Summary', 14, finalY + 15);
+                doc.setFontSize(12);
+                doc.text(`Total Expenses: $${totalAmount.toFixed(2)}`, 14, finalY + 25);
+                doc.text(`Total Tax Deductible: $${totalTax.toFixed(2)}`, 14, finalY + 35);
+                doc.text(`Number of Expenses: ${filteredExpenses.length}`, 14, finalY + 45);
+
+                // Save the PDF
+                doc.save(`Expense_Report_${format(new Date(), 'yyyyMMdd_HHmmss')}.pdf`);
+            });
+        }).catch(error => {
+            console.error('Error generating PDF:', error);
+        });
+    };
+
 
     const handleAddExpense = async () => {
         try {
@@ -276,10 +443,80 @@ const UserDashboard = () => {
         }
     };
 
+    const handleEditExpense = () => {
+        if (!selectedExpense) return;
+
+        setNewExpense({
+            description: selectedExpense.description,
+            amount: selectedExpense.amount,
+            date: new Date(selectedExpense.date),
+            category: selectedExpense.category_id,
+            expenseType: selectedExpense.expense_type,
+            receipt: null,
+            isRecurring: selectedExpense.expense_type === 'recurring',
+            recurringDay: selectedExpense.recurring_day || 1,
+            setupAutoPay: false,
+            cardDetails: {
+                number: '',
+                expiry: '',
+                cvv: ''
+            }
+        });
+        setOpenExpenseModal(true);
+    };
+
+    const handleUpdateExpense = async () => {
+        try {
+            const formData = new FormData();
+            Object.keys(newExpense).forEach(key => {
+                if (key !== 'receipt' && key !== 'cardDetails') {
+                    formData.append(key, newExpense[key]);
+                }
+            });
+
+            if (newExpense.receipt) {
+                formData.append('receipt', newExpense.receipt);
+            }
+
+            if (newExpense.setupAutoPay) {
+                formData.append('cardDetails', JSON.stringify(newExpense.cardDetails));
+            }
+
+            await api.put(`/api/expenses/${selectedExpense.id}`, formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data'
+                }
+            });
+
+            setOpenExpenseModal(false);
+            setSelectedExpense(null);
+            setNewExpense({
+                description: '',
+                amount: '',
+                date: new Date(),
+                category: '',
+                expenseType: 'one-time',
+                receipt: null,
+                isRecurring: false,
+                recurringDay: 1,
+                setupAutoPay: false,
+                cardDetails: {
+                    number: '',
+                    expiry: '',
+                    cvv: ''
+                }
+            });
+            fetchExpenses();
+        } catch (error) {
+            console.error('Error updating expense:', error);
+        }
+    };
+
     const handleDeleteExpense = async () => {
         try {
             await api.delete(`/api/expenses/${selectedExpense.id}`);
             setOpenDeleteDialog(false);
+            setSelectedExpense(null);
             fetchExpenses();
         } catch (error) {
             console.error('Error deleting expense:', error);
@@ -296,13 +533,13 @@ const UserDashboard = () => {
     };
 
     // Calculate summary data
-    const totalExpenses = expenses.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0);
-    const taxDeductible = expenses.reduce((sum, expense) => {
+    const totalExpenses = filteredExpenses.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0);
+    const taxDeductible = filteredExpenses.reduce((sum, expense) => {
         const amount = Number(expense.amount) || 0;
-        const taxPercentage = expense.category?.tax_percentage || 0;
+        const taxPercentage = expense.tax_percentage || 0;
         return sum + (amount * (taxPercentage / 100));
     }, 0);
-    const recurringPayments = expenses.filter(e => e.expenseType === 'recurring').length;
+    const recurringPayments = filteredExpenses.filter(e => e.expense_type === 'recurring').length;
 
     return (
         <LocalizationProvider dateAdapter={AdapterDateFns}>
@@ -357,8 +594,10 @@ const UserDashboard = () => {
                         <Avatar sx={{ width: 64, height: 64, margin: '0 auto 10px', bgcolor: '#3949ab' }}>
                             <AccountCircleIcon fontSize="large" />
                         </Avatar>
-                        <Typography variant="h6">John Doe</Typography>
-                        <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>Premium Member</Typography>
+                        <Typography variant="h6">{userDetails?.name || 'Loading...'}</Typography>
+                        <Typography variant="caption" sx={{ color: 'rgba(255, 255, 255, 0.7)' }}>
+                            {userDetails?.email || ''}
+                        </Typography>
                     </Box>
                     <List>
                         <ListItem button selected sx={{
@@ -441,7 +680,7 @@ const UserDashboard = () => {
                 {/* Main Content */}
                 <Box component="main" sx={{ flexGrow: 1, p: 3, marginTop: '64px' }}>
                     {loading && <LinearProgress color="primary" />}
-                    
+
                     <Grid container spacing={3}>
                         {/* Summary Cards */}
                         <Grid item xs={12} md={4}>
@@ -547,10 +786,10 @@ const UserDashboard = () => {
                                                 value={filters.dateFrom}
                                                 onChange={(date) => setFilters({ ...filters, dateFrom: date })}
                                                 renderInput={(params) => (
-                                                    <TextField 
-                                                        {...params} 
-                                                        fullWidth 
-                                                        size="small" 
+                                                    <TextField
+                                                        {...params}
+                                                        fullWidth
+                                                        size="small"
                                                         sx={{ background: 'rgba(255, 255, 255, 0.9)' }}
                                                     />
                                                 )}
@@ -562,10 +801,10 @@ const UserDashboard = () => {
                                                 value={filters.dateTo}
                                                 onChange={(date) => setFilters({ ...filters, dateTo: date })}
                                                 renderInput={(params) => (
-                                                    <TextField 
-                                                        {...params} 
-                                                        fullWidth 
-                                                        size="small" 
+                                                    <TextField
+                                                        {...params}
+                                                        fullWidth
+                                                        size="small"
                                                         sx={{ background: 'rgba(255, 255, 255, 0.9)' }}
                                                     />
                                                 )}
@@ -593,13 +832,35 @@ const UserDashboard = () => {
                                                 sx={{ background: 'rgba(255, 255, 255, 0.9)' }}
                                             />
                                         </Grid>
-                                        <Grid item xs={12} md={1}>
+                                        <Grid item xs={12} sm={6} md={1}>
                                             <GradientButton
                                                 fullWidth
-                                                onClick={() => fetchExpenses()}
+                                                onClick={applyFilters}
                                             >
-                                                Filter
+                                                Apply
                                             </GradientButton>
+                                        </Grid>
+                                        <Grid item xs={12} sm={6} md={1}>
+                                            <Button
+                                                fullWidth
+                                                variant="outlined"
+                                                onClick={resetFilters}
+                                                sx={{ borderRadius: '8px' }}
+                                            >
+                                                Reset
+                                            </Button>
+                                        </Grid>
+                                        <Grid item xs={12} sm={6} md={1}>
+                                            <Button
+                                                fullWidth
+                                                variant="contained"
+                                                color="secondary"
+                                                startIcon={<PdfIcon />}
+                                                onClick={generateReport}
+                                                sx={{ borderRadius: '8px' }}
+                                            >
+                                                Report
+                                            </Button>
                                         </Grid>
                                     </Grid>
                                 </CardContent>
@@ -610,7 +871,10 @@ const UserDashboard = () => {
                         <Grid item xs={12}>
                             <GradientButton
                                 startIcon={<AddIcon />}
-                                onClick={() => setOpenExpenseModal(true)}
+                                onClick={() => {
+                                    setSelectedExpense(null);
+                                    setOpenExpenseModal(true);
+                                }}
                             >
                                 Add New Expense
                             </GradientButton>
@@ -639,9 +903,9 @@ const UserDashboard = () => {
                                                 </TableRow>
                                             </TableHead>
                                             <TableBody>
-                                                {expenses.map((expense) => {
+                                                {filteredExpenses.map((expense) => {
                                                     const amount = Number(expense.amount) || 0;
-                                                    const taxPercentage = expense.category?.tax_percentage || 0;
+                                                    const taxPercentage = expense.tax_percentage || 0;
                                                     const taxAmount = amount * (taxPercentage / 100);
 
                                                     return (
@@ -655,7 +919,7 @@ const UserDashboard = () => {
                                                             <TableCell>{expense.description}</TableCell>
                                                             <TableCell>
                                                                 <Chip
-                                                                    label={expense.category?.name || 'Uncategorized'}
+                                                                    label={expense.category_name}
                                                                     size="small"
                                                                     color="primary"
                                                                     variant="outlined"
@@ -665,20 +929,20 @@ const UserDashboard = () => {
                                                             <TableCell sx={{ fontWeight: 'bold' }}>${amount.toFixed(2)}</TableCell>
                                                             <TableCell>${taxAmount.toFixed(2)}</TableCell>
                                                             <TableCell>
-                                                                {expense.expenseType === 'recurring' ? (
+                                                                {expense.expense_type === 'recurring' ? (
                                                                     <Box display="flex" alignItems="center">
                                                                         <RepeatIcon fontSize="small" sx={{ mr: 0.5 }} />
-                                                                        <span>Day {expense.recurringDay}</span>
+                                                                        <span>Day {expense.recurring_day}</span>
                                                                     </Box>
                                                                 ) : (
-                                                                    expense.expenseType
+                                                                    expense.expense_type
                                                                 )}
                                                             </TableCell>
                                                             <TableCell>
-                                                                {expense.receipt?.url ? (
+                                                                {expense.receipt_path ? (
                                                                     <HoverIconButton
                                                                         size="small"
-                                                                        onClick={() => window.open(expense.receipt.url, '_blank')}
+                                                                        onClick={() => window.open(`${BACKEND_BASE_URL}${expense.receipt_path}`, '_blank')}
                                                                     >
                                                                         <FilePresentIcon color="primary" />
                                                                     </HoverIconButton>
@@ -691,7 +955,10 @@ const UserDashboard = () => {
                                                             <TableCell>
                                                                 <HoverIconButton
                                                                     size="small"
-                                                                    onClick={() => setSelectedExpense(expense)}
+                                                                    onClick={() => {
+                                                                        setSelectedExpense(expense);
+                                                                        handleEditExpense();
+                                                                    }}
                                                                 >
                                                                     <EditIcon color="primary" />
                                                                 </HoverIconButton>
@@ -717,11 +984,14 @@ const UserDashboard = () => {
                     </Grid>
                 </Box>
 
-                {/* Add Expense Modal */}
+                {/* Add/Edit Expense Modal */}
                 <Modal
                     open={openExpenseModal}
-                    onClose={() => setOpenExpenseModal(false)}
-                    aria-labelledby="add-expense-modal"
+                    onClose={() => {
+                        setOpenExpenseModal(false);
+                        setSelectedExpense(null);
+                    }}
+                    aria-labelledby="expense-modal"
                 >
                     <Box sx={{
                         position: 'absolute',
@@ -737,8 +1007,17 @@ const UserDashboard = () => {
                         outline: 'none'
                     }}>
                         <Typography variant="h5" gutterBottom sx={{ fontWeight: 'bold', mb: 3, display: 'flex', alignItems: 'center' }}>
-                            <AddIcon color="primary" sx={{ mr: 1 }} />
-                            Add New Expense
+                            {selectedExpense ? (
+                                <>
+                                    <EditIcon color="primary" sx={{ mr: 1 }} />
+                                    Edit Expense
+                                </>
+                            ) : (
+                                <>
+                                    <AddIcon color="primary" sx={{ mr: 1 }} />
+                                    Add New Expense
+                                </>
+                            )}
                         </Typography>
                         <Grid container spacing={2}>
                             <Grid item xs={12}>
@@ -771,9 +1050,9 @@ const UserDashboard = () => {
                                     value={newExpense.date}
                                     onChange={(date) => setNewExpense({ ...newExpense, date })}
                                     renderInput={(params) => (
-                                        <TextField 
-                                            {...params} 
-                                            fullWidth 
+                                        <TextField
+                                            {...params}
+                                            fullWidth
                                             variant="outlined"
                                             size="small"
                                         />
@@ -934,11 +1213,11 @@ const UserDashboard = () => {
 
                             <Grid item xs={12} sx={{ mt: 2 }}>
                                 <GradientButton
-                                    onClick={handleAddExpense}
+                                    onClick={selectedExpense ? handleUpdateExpense : handleAddExpense}
                                     fullWidth
                                     size="large"
                                 >
-                                    Save Expense
+                                    {selectedExpense ? 'Update Expense' : 'Save Expense'}
                                 </GradientButton>
                             </Grid>
                         </Grid>
@@ -963,16 +1242,16 @@ const UserDashboard = () => {
                         </Typography>
                     </DialogContent>
                     <DialogActions>
-                        <Button 
-                            onClick={() => setOpenDeleteDialog(false)} 
+                        <Button
+                            onClick={() => setOpenDeleteDialog(false)}
                             variant="outlined"
                             sx={{ borderRadius: '8px' }}
                         >
                             Cancel
                         </Button>
-                        <Button 
-                            onClick={handleDeleteExpense} 
-                            color="error" 
+                        <Button
+                            onClick={handleDeleteExpense}
+                            color="error"
                             variant="contained"
                             sx={{ borderRadius: '8px' }}
                         >
