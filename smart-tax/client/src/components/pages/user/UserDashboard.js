@@ -4,6 +4,7 @@ import api from '../../api';
 import { format } from 'date-fns';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
+import { GlassCard, GradientButton, HoverIconButton } from '../../styles.js';
 import {
     AppBar,
     Toolbar,
@@ -81,40 +82,40 @@ const FuturisticAppBar = styled(AppBar)(({ theme }) => ({
     borderBottom: `1px solid ${alpha(theme.palette.common.white, 0.1)}`
 }));
 
-const GlassCard = styled(Card)(({ theme }) => ({
-    background: alpha(theme.palette.background.paper, 0.8),
-    backdropFilter: 'blur(10px)',
-    borderRadius: '12px',
-    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)',
-    border: `1px solid ${alpha(theme.palette.divider, 0.2)}`,
-    transition: 'transform 0.3s, box-shadow 0.3s',
-    '&:hover': {
-        transform: 'translateY(-5px)',
-        boxShadow: '0 12px 40px rgba(0, 0, 0, 0.15)'
-    }
-}));
+// const GlassCard = styled(Card)(({ theme }) => ({
+//     background: alpha(theme.palette.background.paper, 0.8),
+//     backdropFilter: 'blur(10px)',
+//     borderRadius: '12px',
+//     boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)',
+//     border: `1px solid ${alpha(theme.palette.divider, 0.2)}`,
+//     transition: 'transform 0.3s, box-shadow 0.3s',
+//     '&:hover': {
+//         transform: 'translateY(-5px)',
+//         boxShadow: '0 12px 40px rgba(0, 0, 0, 0.15)'
+//     }
+// }));
 
-const HoverIconButton = styled(IconButton)(({ theme }) => ({
-    transition: 'all 0.3s',
-    '&:hover': {
-        transform: 'scale(1.1)',
-        color: theme.palette.primary.main
-    }
-}));
+// const HoverIconButton = styled(IconButton)(({ theme }) => ({
+//     transition: 'all 0.3s',
+//     '&:hover': {
+//         transform: 'scale(1.1)',
+//         color: theme.palette.primary.main
+//     }
+// }));
 
-const GradientButton = styled(Button)(({ theme }) => ({
-    background: 'linear-gradient(45deg, #3f51b5 0%, #2196f3 100%)',
-    color: 'white',
-    fontWeight: 'bold',
-    borderRadius: '8px',
-    padding: '8px 16px',
-    textTransform: 'none',
-    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
-    '&:hover': {
-        boxShadow: '0 6px 8px rgba(0, 0, 0, 0.15)',
-        background: 'linear-gradient(45deg, #3949ab 0%, #1e88e5 100%)'
-    }
-}));
+// const GradientButton = styled(Button)(({ theme }) => ({
+//     background: 'linear-gradient(45deg, #3f51b5 0%, #2196f3 100%)',
+//     color: 'white',
+//     fontWeight: 'bold',
+//     borderRadius: '8px',
+//     padding: '8px 16px',
+//     textTransform: 'none',
+//     boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+//     '&:hover': {
+//         boxShadow: '0 6px 8px rgba(0, 0, 0, 0.15)',
+//         background: 'linear-gradient(45deg, #3949ab 0%, #1e88e5 100%)'
+//     }
+// }));
 
 const StyledTableRow = styled(TableRow)(({ theme }) => ({
     '&:nth-of-type(odd)': {
@@ -139,6 +140,8 @@ const UserDashboard = () => {
     const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
     const [selectedExpense, setSelectedExpense] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [paymentMethods, setPaymentMethods] = useState([]);
+    const [loadingPaymentMethods, setLoadingPaymentMethods] = useState(false);
     const [error, setError] = useState(null);
     const [filters, setFilters] = useState({
         category: '',
@@ -172,6 +175,19 @@ const UserDashboard = () => {
             setUserDetails(response.data);
         } catch (error) {
             console.error('Error fetching user details:', error);
+        }
+    };
+
+    const fetchPaymentMethods = async () => {
+        try {
+            setLoadingPaymentMethods(true);
+            // Mock API call - replace with your actual API endpoint
+            const response = await api.get('/api/payment-methods');
+            setPaymentMethods(response.data);
+        } catch (error) {
+            console.error('Error fetching payment methods:', error);
+        } finally {
+            setLoadingPaymentMethods(false);
         }
     };
 
@@ -234,6 +250,7 @@ const UserDashboard = () => {
 
         fetchData();
         fetchUserDetails();
+        fetchPaymentMethods();
 
         return () => {
             api.interceptors.request.eject(requestInterceptor);
@@ -620,7 +637,7 @@ const UserDashboard = () => {
                                 backgroundColor: 'rgba(255, 255, 255, 0.15)'
                             }
                         }}>
-                            <ListItemIcon sx={{ color: 'white' }}>
+                            {/* <ListItemIcon sx={{ color: 'white' }}>
                                 <ReceiptIcon />
                             </ListItemIcon>
                             <ListItemText primary="Expenses" />
@@ -646,11 +663,27 @@ const UserDashboard = () => {
                         }}>
                             <ListItemIcon sx={{ color: 'white' }}>
                                 <WalletIcon />
-                            </ListItemIcon>
-                            <ListItemText primary="Payment Methods" />
+                            </ListItemIcon> */}
+                        <Divider sx={{ borderColor: 'rgba(255, 255, 255, 0.1)', my: 1 }} />
+
+                            <ListItem
+                                button
+                                onClick={() => navigate('/payment-methods')}
+                                sx={{
+                                    borderRadius: '8px',
+                                    margin: '4px 8px',
+                                    '&:hover': {
+                                        backgroundColor: 'rgba(255, 255, 255, 0.15)'
+                                    }
+                                }}>
+                                <ListItemIcon sx={{ color: 'white' }}>
+                                    <WalletIcon />
+                                </ListItemIcon>
+                                <ListItemText primary="Payment Methods" />
+                            </ListItem>
                         </ListItem>
                         <Divider sx={{ borderColor: 'rgba(255, 255, 255, 0.1)', my: 1 }} />
-                        <ListItem button sx={{
+                        {/* <ListItem button sx={{
                             borderRadius: '8px',
                             margin: '4px 8px',
                             '&:hover': {
@@ -661,7 +694,7 @@ const UserDashboard = () => {
                                 <SettingsIcon />
                             </ListItemIcon>
                             <ListItemText primary="Settings" />
-                        </ListItem>
+                        </ListItem> */}
                         <ListItem button onClick={handleLogout} sx={{
                             borderRadius: '8px',
                             margin: '4px 8px',
@@ -1135,58 +1168,61 @@ const UserDashboard = () => {
                                     <Grid item xs={12}>
                                         <Typography variant="subtitle1" gutterBottom sx={{ mt: 1, display: 'flex', alignItems: 'center' }}>
                                             <CreditCardIcon color="primary" sx={{ mr: 1 }} />
-                                            Payment Card Details
+                                            Payment Method
                                         </Typography>
                                     </Grid>
-                                    <Grid item xs={12}>
-                                        <TextField
-                                            label="Card Number"
-                                            fullWidth
-                                            value={newExpense.cardDetails.number}
-                                            onChange={(e) => setNewExpense({
-                                                ...newExpense,
-                                                cardDetails: {
-                                                    ...newExpense.cardDetails,
-                                                    number: e.target.value
-                                                }
-                                            })}
-                                            variant="outlined"
-                                            size="small"
-                                        />
-                                    </Grid>
-                                    <Grid item xs={6}>
-                                        <TextField
-                                            label="Expiry Date"
-                                            fullWidth
-                                            placeholder="MM/YY"
-                                            value={newExpense.cardDetails.expiry}
-                                            onChange={(e) => setNewExpense({
-                                                ...newExpense,
-                                                cardDetails: {
-                                                    ...newExpense.cardDetails,
-                                                    expiry: e.target.value
-                                                }
-                                            })}
-                                            variant="outlined"
-                                            size="small"
-                                        />
-                                    </Grid>
-                                    <Grid item xs={6}>
-                                        <TextField
-                                            label="CVV"
-                                            fullWidth
-                                            value={newExpense.cardDetails.cvv}
-                                            onChange={(e) => setNewExpense({
-                                                ...newExpense,
-                                                cardDetails: {
-                                                    ...newExpense.cardDetails,
-                                                    cvv: e.target.value
-                                                }
-                                            })}
-                                            variant="outlined"
-                                            size="small"
-                                        />
-                                    </Grid>
+
+                                    {paymentMethods.length > 0 ? (
+                                        <>
+                                            <Grid item xs={12}>
+                                                <FormControl fullWidth size="small">
+                                                    <InputLabel>Select Payment Method</InputLabel>
+                                                    <Select
+                                                        value={newExpense.selectedPaymentMethod || ''}
+                                                        onChange={(e) => setNewExpense({
+                                                            ...newExpense,
+                                                            selectedPaymentMethod: e.target.value
+                                                        })}
+                                                        label="Select Payment Method"
+                                                        variant="outlined"
+                                                    >
+                                                        {paymentMethods.map(method => (
+                                                            <MenuItem key={method.id} value={method.id}>
+                                                                {method.nickname || `${method.cardType} Card`} (•••• {method.masked_number})
+                                                            </MenuItem>
+                                                        ))}
+                                                    </Select>
+                                                </FormControl>
+                                            </Grid>
+                                            <Grid item xs={12}>
+                                                <Button
+                                                    variant="text"
+                                                    size="small"
+                                                    startIcon={<AddIcon />}
+                                                    onClick={() => navigate('/payment-methods')}
+                                                >
+                                                    Add new payment method
+                                                </Button>
+                                            </Grid>
+                                        </>
+                                    ) : (
+                                        <Grid item xs={12}>
+                                            <Card variant="outlined" sx={{ p: 2, textAlign: 'center' }}>
+                                                <Typography variant="body2" color="text.secondary">
+                                                    You don't have any payment methods saved.
+                                                </Typography>
+                                                <Button
+                                                    variant="contained"
+                                                    size="small"
+                                                    startIcon={<AddIcon />}
+                                                    onClick={() => navigate('/payment-methods')}
+                                                    sx={{ mt: 1 }}
+                                                >
+                                                    Add Payment Method
+                                                </Button>
+                                            </Card>
+                                        </Grid>
+                                    )}
                                 </>
                             )}
 

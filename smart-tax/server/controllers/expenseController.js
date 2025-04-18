@@ -22,7 +22,7 @@ const expenseController = {
 
   createExpense: async (req, res) => {
     try {
-      const { description, amount, date, category, expenseType, is_recurring, recurring_day, setup_auto_pay, card_details } = req.body;
+      const { description, amount, date, category, expenseType, isRecurring, recurringDay, setup_auto_pay, card_details,selectedPaymentMethod } = req.body;
 
       let receipt_path = null;
       if (req.file) {
@@ -41,9 +41,9 @@ const expenseController = {
         category_id: category,
         expense_type: expenseType,
         receipt_path,
-        is_recurring: is_recurring,
-        recurring_day,
-        card_details: setup_auto_pay ? card_details : null
+        is_recurring: isRecurring,
+        recurring_day:recurringDay,
+        card_details: selectedPaymentMethod
       });
 
       res.status(201).json({ id: expenseId });
@@ -56,8 +56,9 @@ const expenseController = {
   updateExpense: async (req, res) => {
     try {
       const { id } = req.params;
-      const { description, amount, date, category_id, expense_type, is_recurring, recurring_day, setup_auto_pay, card_details } = req.body;
+      const { description, amount, date, category, expenseType, is_recurring, recurring_day, setup_auto_pay, card_details } = req.body;
 
+      const mysqlDate = new Date(date).toISOString().slice(0, 19).replace('T', ' ');
       let receipt_path = null;
       if (req.file) {
         receipt_path = req.file.path;
@@ -66,11 +67,11 @@ const expenseController = {
       await Expense.update(id, req.user.id, {
         description,
         amount,
-        date,
-        category_id,
-        expense_type,
+        date: mysqlDate,
+        category_id: category,
+        expense_type: expenseType,
         receipt_path,
-        is_recurring,
+        is_recurring: is_recurring,
         recurring_day,
         card_details: setup_auto_pay ? card_details : null
       });

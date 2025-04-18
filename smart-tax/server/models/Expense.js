@@ -77,7 +77,9 @@ class Expense {
         receipt_path,
         is_recurring,
         recurring_day,
-        card_details ? JSON.stringify(card_details) : null
+        // card_details ? JSON.stringify(card_details) : null
+        card_details
+
       ]
     );
     return result.insertId;
