@@ -447,7 +447,7 @@ const PaymentMethods = () => {
                                                                 }}
                                                                 disabled={loading.action}
                                                             >
-                                                                <EditIcon color="primary" />
+                                                                {/* <EditIcon color="primary" /> */}
                                                             </HoverIconButton>
                                                             <HoverIconButton
                                                                 size="small"
