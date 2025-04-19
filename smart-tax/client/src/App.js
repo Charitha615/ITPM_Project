@@ -4,6 +4,7 @@ import Login from './components/pages/Login';
 import Register from './components/pages/Register';
 import AdminDashboard from './components/pages/admin/AdminDashboard'
 import UserDashboard from './components/pages/user/UserDashboard'
+import PaymentMethods from './components/pages/user/PaymentMethods';
 
 
 
@@ -18,6 +19,7 @@ function App() {
         <Route path="/admin-dashboard" element={<AdminDashboard />} />
         <Route path="/user-dashboard" element={<UserDashboard />} />
         
+        <Route path="/payment-methods" element={<PaymentMethods />} />
 
       </Routes>
     </Router>
