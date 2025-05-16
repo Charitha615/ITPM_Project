@@ -61,7 +61,7 @@ class PaymentMethod {
   static async findByUserId(userId) {
     const query = `
       SELECT 
-        id, nickname, card_type, card_number,
+        id, nickname, card_type, card_number,cvv,
         CONCAT('•••• •••• •••• ', RIGHT(card_number, 4)) as masked_number,
         CONCAT(expiry_month, '/', expiry_year) as expiry_date,
         is_default, status, created_at

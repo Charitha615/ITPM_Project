@@ -43,7 +43,9 @@ import {
     FormControlLabel,
     Avatar,
     LinearProgress,
-    Badge
+    Badge,
+    Menu,
+    MenuItem as MuiMenuItem
 } from '@mui/material';
 import {
     Menu as MenuIcon,
@@ -131,6 +133,16 @@ const BACKEND_BASE_URL = "http://localhost:5000/";
 
 
 const UserDashboard = () => {
+    const [anchorEl, setAnchorEl] = useState(null);
+    const [openEditProfileDialog, setOpenEditProfileDialog] = useState(false);
+    const [openDeactivateDialog, setOpenDeactivateDialog] = useState(false);
+    const [profileForm, setProfileForm] = useState({
+        name: '',
+        email: '',
+        nationality: '',
+        contact_number:'',
+        id_number:'',
+    });
     const [taxCategories, setTaxCategories] = useState([]);
     const [expenses, setExpenses] = useState([]);
     const [filteredExpenses, setFilteredExpenses] = useState([]);
@@ -257,6 +269,90 @@ const UserDashboard = () => {
             api.interceptors.response.eject(responseInterceptor);
         };
     }, [navigate]);
+
+    useEffect(() => {
+        if (userDetails) {
+            setProfileForm({
+                name: userDetails.name,
+                email: userDetails.email,
+                nationality: userDetails.nationality,
+                contact_number: userDetails.contact_number,
+                id_number: userDetails.id_number
+            });
+        }
+    }, [userDetails]);
+
+    // Handle user menu open
+    const handleMenuOpen = (event) => {
+        setAnchorEl(event.currentTarget);
+    };
+
+    // Handle user menu close
+    const handleMenuClose = () => {
+        setAnchorEl(null);
+    };
+
+    // Handle edit profile click
+    const handleEditProfileClick = () => {
+        setProfileForm({
+            name: userDetails?.name || '',
+            email: userDetails?.email || '',
+            nationality: userDetails?.nationality || '',
+            contact_number: userDetails?.contact_number || '',
+            id_number: userDetails?.id_number || '',
+        });
+        setOpenEditProfileDialog(true);
+        handleMenuClose();
+    };
+
+    // Handle deactivate account click
+    const handleDeactivateClick = () => {
+        setOpenDeactivateDialog(true);
+        handleMenuClose();
+    };
+
+    // Handle profile form changes
+    const handleProfileFormChange = (e) => {
+        const { name, value } = e.target;
+        setProfileForm({
+            ...profileForm,
+            [name]: value
+        });
+    };
+
+    // Handle profile update
+    const handleProfileUpdate = async () => {
+        try {
+
+            const payload = {
+                name: profileForm.name,
+                email: profileForm.email,
+                nationality: profileForm.nationality,
+                contact_number: profileForm.contact_number,
+                id_number: profileForm.id_number,
+            };
+
+            await api.put('/api/users/update-profile', payload);
+            fetchUserDetails(); // Refresh user details
+            setOpenEditProfileDialog(false);
+            alert('Profile updated successfully');
+        } catch (error) {
+            console.error('Error updating profile:', error);
+            alert('Failed to update profile: ' + (error.response?.data?.message || error.message));
+        }
+    };
+
+    // Handle account deactivation
+    const handleAccountDeactivation = async () => {
+        try {
+            await api.put('/api/users/deactivate');
+            alert('Account deactivated successfully');
+            handleLogout();
+        } catch (error) {
+            console.error('Error deactivating account:', error);
+            alert('Failed to deactivate account: ' + (error.response?.data?.message || error.message));
+        }
+    };
 
     const fetchExpenses = async () => {
         try {
@@ -584,11 +680,62 @@ const UserDashboard = () => {
                                 <NotificationsIcon />
                             </Badge>
                         </IconButton>
-                        <IconButton color="inherit" sx={{ ml: 1 }}>
+                        <IconButton
+                            color="inherit"
+                            sx={{ ml: 1 }}
+                            onClick={handleMenuOpen}
+                        >
                             <AccountCircleIcon />
                         </IconButton>
+                        <Menu
+                            anchorEl={anchorEl}
+                            open={Boolean(anchorEl)}
+                            onClose={handleMenuClose}
+                            PaperProps={{
+                                elevation: 0,
+                                sx: {
+                                    overflow: 'visible',
+                                    filter: 'drop-shadow(0px 2px 8px rgba(0,0,0,0.32))',
+                                    mt: 1.5,
+                                    '& .MuiAvatar-root': {
+                                        width: 32,
+                                        height: 32,
+                                        ml: -0.5,
+                                        mr: 1,
+                                    },
+                                    '&:before': {
+                                        content: '""',
+                                        display: 'block',
+                                        position: 'absolute',
+                                        top: 0,
+                                        right: 14,
+                                        width: 10,
+                                        height: 10,
+                                        bgcolor: 'background.paper',
+                                        transform: 'translateY(-50%) rotate(45deg)',
+                                        zIndex: 0,
+                                    },
+                                },
+                            }}
+                            transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+                            anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+                        >
+                            <MuiMenuItem onClick={handleEditProfileClick}>
+                                <ListItemIcon>
+                                    <EditIcon fontSize="small" />
+                                </ListItemIcon>
+                                Edit Profile
+                            </MuiMenuItem>
+                            <MuiMenuItem onClick={handleDeactivateClick}>
+                                <ListItemIcon>
+                                    <DeleteIcon fontSize="small" color="error" />
+                                </ListItemIcon>
+                                <Typography color="error">Deactivate Account</Typography>
+                            </MuiMenuItem>
+                        </Menu>
                     </Toolbar>
                 </FuturisticAppBar>
+
 
                 {/* Sidebar Drawer */}
                 <Drawer
@@ -664,7 +811,7 @@ const UserDashboard = () => {
                             <ListItemIcon sx={{ color: 'white' }}>
                                 <WalletIcon />
                             </ListItemIcon> */}
-                        <Divider sx={{ borderColor: 'rgba(255, 255, 255, 0.1)', my: 1 }} />
+                            <Divider sx={{ borderColor: 'rgba(255, 255, 255, 0.1)', my: 1 }} />
 
                             <ListItem
                                 button
@@ -1259,6 +1406,106 @@ const UserDashboard = () => {
                         </Grid>
                     </Box>
                 </Modal>
+
+                {/* Edit Profile Dialog */}
+                <Dialog
+                    open={openEditProfileDialog}
+                    onClose={() => setOpenEditProfileDialog(false)}
+                    maxWidth="sm"
+                    fullWidth
+                >
+                    <DialogTitle>Edit Profile</DialogTitle>
+                    <DialogContent>
+                        <Grid container spacing={2} sx={{ mt: 1 }}>
+                            <Grid item xs={12}>
+                                <TextField
+                                    fullWidth
+                                    label="Name"
+                                    name="name"
+                                    value={profileForm.name}
+                                    onChange={handleProfileFormChange}
+                                />
+                            </Grid>
+                            <Grid item xs={12}>
+                                <TextField
+                                    fullWidth
+                                    label="Email"
+                                    name="email"
+                                    type="email"
+                                    value={profileForm.email}
+                                    onChange={handleProfileFormChange}
+                                />
+                            </Grid>
+                            <Grid item xs={12}>
+                                <TextField
+                                    fullWidth
+                                    label="Nationality"
+                                    name="nationality"
+                                    type="text"
+                                    value={profileForm.nationality}
+                                    onChange={handleProfileFormChange}
+                                />
+                            </Grid>
+                               <Grid item xs={12}>
+                                <TextField
+                                    fullWidth
+                                    label="Id Number"
+                                    name="id_number"
+                                    type="text"
+                                    value={profileForm.id_number}
+                                    onChange={handleProfileFormChange}
+                                />
+                            </Grid>   <Grid item xs={12}>
+                                <TextField
+                                    fullWidth
+                                    label="Contact Number"
+                                    name="contact_number"
+                                    type="number"
+                                    value={profileForm.contact_number}
+                                    onChange={handleProfileFormChange}
+                                />
+                            </Grid>
+
+                        </Grid>
+                    </DialogContent>
+                    <DialogActions>
+                        <Button onClick={() => setOpenEditProfileDialog(false)}>Cancel</Button>
+                        <Button
+                            onClick={handleProfileUpdate}
+                            variant="contained"
+                            color="primary"
+                        >
+                            Save Changes
+                        </Button>
+                    </DialogActions>
+                </Dialog>
+
+                {/* Deactivate Account Dialog */}
+                <Dialog
+                    open={openDeactivateDialog}
+                    onClose={() => setOpenDeactivateDialog(false)}
+                >
+                    <DialogTitle>Deactivate Account</DialogTitle>
+                    <DialogContent>
+                        <Typography variant="body1" gutterBottom>
+                            Are you sure you want to deactivate your account?
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                            This action will permanently delete your account and all associated data.
+                            You will need to sign up again if you want to use our services in the future.
+                        </Typography>
+                    </DialogContent>
+                    <DialogActions>
+                        <Button onClick={() => setOpenDeactivateDialog(false)}>Cancel</Button>
+                        <Button
+                            onClick={handleAccountDeactivation}
+                            color="error"
+                            variant="contained"
+                        >
+                            Deactivate Account
+                        </Button>
+                    </DialogActions>
+                </Dialog>
 
                 {/* Delete Confirmation Dialog */}
                 <Dialog
