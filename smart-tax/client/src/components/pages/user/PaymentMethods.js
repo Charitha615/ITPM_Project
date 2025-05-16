@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import api from '../../api';
 import { format, differenceInMonths, parse } from 'date-fns';
 import { GlassCard, GradientButton, HoverIconButton } from '../../styles.js';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import {
     Box,
     Typography,
@@ -47,7 +49,8 @@ import {
     AccountBalanceWallet as WalletIcon,
     Payment as PaymentIcon,
     Security as SecurityIcon,
-    CreditScore as CreditScoreIcon
+    CreditScore as CreditScoreIcon,
+    PictureAsPdf as PdfIcon
 } from '@mui/icons-material';
 
 const PaymentMethods = () => {
@@ -63,7 +66,8 @@ const PaymentMethods = () => {
     const [selectedMethod, setSelectedMethod] = useState(null);
     const [loading, setLoading] = useState({
         methods: true,
-        action: false
+        action: false,
+        pdf: false
     });
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(null);
@@ -107,7 +111,7 @@ const PaymentMethods = () => {
         const now = new Date();
         let expiringSoon = 0;
         const cardTypes = {};
-        
+
         methods.forEach(method => {
             // Calculate expiring cards
             const [month, year] = method.expiry_date.split('/');
@@ -115,7 +119,7 @@ const PaymentMethods = () => {
             if (differenceInMonths(expiryDate, now) <= 3) {
                 expiringSoon++;
             }
-            
+
             // Count card types
             cardTypes[method.card_type] = (cardTypes[method.card_type] || 0) + 1;
         });
@@ -132,11 +136,178 @@ const PaymentMethods = () => {
         fetchPaymentMethods();
     }, []);
 
+    const generatePDF = () => {
+        setLoading(prev => ({ ...prev, pdf: true }));
+
+        // Dynamic imports to avoid SSR issues and ensure proper initialization
+        import('jspdf').then(({ default: jsPDF }) => {
+            import('jspdf-autotable').then((autoTable) => {
+                try {
+                    const doc = new jsPDF({
+                        orientation: 'portrait',
+                        unit: 'mm',
+                        format: 'a4'
+                    });
+
+                    // Document metadata
+                    doc.setProperties({
+                        title: 'Payment Methods Report',
+                        subject: 'Payment methods summary',
+                        author: 'Your App Name',
+                        keywords: 'payment, methods, report'
+                    });
+
+                    // Title
+                    doc.setFontSize(18);
+                    doc.setTextColor(40, 53, 147);
+                    doc.text('Payment Methods Report', 105, 20, { align: 'center' });
+
+                    // Date
+                    doc.setFontSize(10);
+                    doc.setTextColor(100);
+                    doc.text(`Generated on: ${format(new Date(), 'MMMM d, yyyy h:mm a')}`, 105, 27, { align: 'center' });
+
+                    // Line separator
+                    doc.setDrawColor(200, 200, 200);
+                    doc.setLineWidth(0.5);
+                    doc.line(15, 32, 195, 32);
+
+                    // Summary section
+                    doc.setFontSize(12);
+                    doc.setTextColor(40);
+                    doc.text('Summary Statistics', 15, 40);
+
+                    // Summary table
+                    autoTable.default(doc, {
+                        startY: 45,
+                        head: [['Metric', 'Value']],
+                        body: [
+                            ['Total Cards', stats.totalCards],
+                            ['Cards Expiring Soon', stats.expiringSoon],
+                            ['Default Card Set', stats.defaultSet ? 'Yes' : 'No']
+                        ],
+                        theme: 'grid',
+                        headStyles: {
+                            fillColor: [41, 128, 185],
+                            textColor: 255,
+                            fontStyle: 'bold'
+                        },
+                        styles: {
+                            cellPadding: 3,
+                            fontSize: 10,
+                            halign: 'left'
+                        },
+                        margin: { left: 15 }
+                    });
+
+                    // Card type distribution section
+                    doc.setFontSize(12);
+                    doc.text('Card Type Distribution', 15, doc.lastAutoTable.finalY + 15);
+
+                    const cardTypeData = getCardTypeDistribution().map(type => [
+                        type.type.toUpperCase(),
+                        type.count,
+                        `${type.percentage}%`
+                    ]);
+
+                    autoTable.default(doc, {
+                        startY: doc.lastAutoTable.finalY + 20,
+                        head: [['Card Type', 'Count', 'Percentage']],
+                        body: cardTypeData,
+                        theme: 'grid',
+                        headStyles: {
+                            fillColor: [41, 128, 185],
+                            textColor: 255,
+                            fontStyle: 'bold'
+                        },
+                        styles: {
+                            cellPadding: 3,
+                            fontSize: 10,
+                            halign: 'left'
+                        },
+                        margin: { left: 15 }
+                    });
+
+                    // Payment methods details section
+                    doc.setFontSize(12);
+                    doc.text('Payment Methods Details', 15, doc.lastAutoTable.finalY + 15);
+
+                    const methodsData = paymentMethods.map(method => [
+                        method.nickname || `${method.card_type} Card`,
+                        method.card_type.toUpperCase(),
+                        formatCardNumber(method.masked_number || ''),
+                        method.expiry_date || '',
+                        method.is_default ? 'Yes' : 'No',
+                        method.status === 'active' ? 'Active' : 'Expired'
+                    ]);
+
+                    autoTable.default(doc, {
+                        startY: doc.lastAutoTable.finalY + 20,
+                        head: [['Nickname', 'Type', 'Number', 'Expiry', 'Default', 'Status']],
+                        body: methodsData,
+                        theme: 'grid',
+                        headStyles: {
+                            fillColor: [41, 128, 185],
+                            textColor: 255,
+                            fontStyle: 'bold'
+                        },
+                        styles: {
+                            cellPadding: 3,
+                            fontSize: 9,
+                            overflow: 'linebreak',
+                            halign: 'left'
+                        },
+                        columnStyles: {
+                            0: { cellWidth: 30 },
+                            1: { cellWidth: 20 },
+                            2: { cellWidth: 30 },
+                            3: { cellWidth: 20 },
+                            4: { cellWidth: 15 },
+                            5: { cellWidth: 15 }
+                        },
+                        margin: { left: 15 },
+                        pageBreak: 'auto'
+                    });
+
+                    // Footer
+                    doc.setFontSize(8);
+                    doc.setTextColor(150);
+                    doc.text('Confidential - For internal use only', 105, 285, { align: 'center' });
+
+                    // Page numbers
+                    const pageCount = doc.internal.getNumberOfPages();
+                    for (let i = 1; i <= pageCount; i++) {
+                        doc.setPage(i);
+                        doc.text(`Page ${i} of ${pageCount}`, 195, 285, { align: 'right' });
+                    }
+
+                    // Save the PDF
+                    doc.save(`payment_methods_report_${format(new Date(), 'yyyyMMdd_HHmmss')}.pdf`);
+
+                    setSuccess('PDF report generated successfully');
+                } catch (err) {
+                    console.error('Error generating PDF:', err);
+                    setError('Failed to generate PDF. Please try again.');
+                } finally {
+                    setLoading(prev => ({ ...prev, pdf: false }));
+                }
+            }).catch(err => {
+                console.error('Error loading jspdf-autotable:', err);
+                setError('Failed to load PDF generator. Please refresh and try again.');
+                setLoading(prev => ({ ...prev, pdf: false }));
+            });
+        }).catch(err => {
+            console.error('Error loading jspdf:', err);
+            setError('Failed to load PDF generator. Please refresh and try again.');
+            setLoading(prev => ({ ...prev, pdf: false }));
+        });
+    };
+
     const handleAddPaymentMethod = async () => {
         try {
             setLoading(prev => ({ ...prev, action: true }));
             setError(null);
-            
+
             const [expiryMonth, expiryYear] = newPaymentMethod.expiryDate.split('/');
             const payload = {
                 ...newPaymentMethod,
@@ -161,7 +332,7 @@ const PaymentMethods = () => {
                 cardType: 'visa',
                 is_default: false
             });
-            
+
             setSuccess('Payment method added successfully');
             await fetchPaymentMethods();
         } catch (error) {
@@ -178,7 +349,7 @@ const PaymentMethods = () => {
         try {
             setLoading(prev => ({ ...prev, action: true }));
             setError(null);
-            
+
             const [expiryMonth, expiryYear] = newPaymentMethod.expiryDate.split('/');
             const payload = {
                 nickname: newPaymentMethod.nickname,
@@ -204,7 +375,7 @@ const PaymentMethods = () => {
                 cardType: 'visa',
                 is_default: false
             });
-            
+
             setSuccess('Payment method updated successfully');
             await fetchPaymentMethods();
         } catch (error) {
@@ -221,7 +392,7 @@ const PaymentMethods = () => {
         try {
             setLoading(prev => ({ ...prev, action: true }));
             setError(null);
-            
+
             await api.delete(
                 `/api/payment-methods/${selectedMethod.id}`,
                 getAuthHeaders()
@@ -229,7 +400,7 @@ const PaymentMethods = () => {
 
             setOpenDeleteDialog(false);
             setSelectedMethod(null);
-            
+
             setSuccess('Payment method deleted successfully');
             await fetchPaymentMethods();
         } catch (error) {
@@ -244,13 +415,13 @@ const PaymentMethods = () => {
         try {
             setLoading(prev => ({ ...prev, action: true }));
             setError(null);
-            
+
             await api.patch(
                 `/api/payment-methods/${methodId}/set-default`,
                 {},
                 getAuthHeaders()
             );
-            
+
             setSuccess('Default payment method updated successfully');
             await fetchPaymentMethods();
         } catch (error) {
@@ -316,7 +487,7 @@ const PaymentMethods = () => {
                     {error}
                 </Alert>
             </Snackbar>
-            
+
             <Snackbar
                 open={!!success}
                 autoHideDuration={4000}
@@ -336,24 +507,36 @@ const PaymentMethods = () => {
                     Payment Methods
                 </Typography>
                 <Box sx={{ flexGrow: 1 }} />
-                <GradientButton
-                    startIcon={<AddIcon />}
-                    onClick={() => {
-                        setSelectedMethod(null);
-                        setNewPaymentMethod({
-                            nickname: '',
-                            cardNumber: '',
-                            expiryDate: '',
-                            cvv: '',
-                            cardType: 'visa',
-                            is_default: false
-                        });
-                        setOpenModal(true);
-                    }}
-                    disabled={loading.action}
-                >
-                    Add New Payment Method
-                </GradientButton>
+                <Box sx={{ display: 'flex', gap: 2 }}>
+                    <Button
+                        variant="contained"
+                        color="secondary"
+                        startIcon={<PdfIcon />}
+                        onClick={generatePDF}
+                        disabled={loading.pdf || loading.methods || paymentMethods.length === 0}
+                        sx={{ borderRadius: '8px' }}
+                    >
+                        {loading.pdf ? 'Generating...' : 'Export PDF'}
+                    </Button>
+                    <GradientButton
+                        startIcon={<AddIcon />}
+                        onClick={() => {
+                            setSelectedMethod(null);
+                            setNewPaymentMethod({
+                                nickname: '',
+                                cardNumber: '',
+                                expiryDate: '',
+                                cvv: '',
+                                cardType: 'visa',
+                                is_default: false
+                            });
+                            setOpenModal(true);
+                        }}
+                        disabled={loading.action}
+                    >
+                        Add New Payment Method
+                    </GradientButton>
+                </Box>
             </Box>
 
             {loading.methods && <LinearProgress />}
@@ -366,7 +549,7 @@ const PaymentMethods = () => {
                             <Typography variant="h6" gutterBottom sx={{ mb: 2, fontWeight: 'bold' }}>
                                 Your Payment Methods
                             </Typography>
-                            
+
                             {paymentMethods.length === 0 && !loading.methods ? (
                                 <Box sx={{ textAlign: 'center', py: 4 }}>
                                     <CreditCardIcon sx={{ fontSize: 60, color: 'text.secondary', mb: 2 }} />
@@ -391,18 +574,18 @@ const PaymentMethods = () => {
                                                 <TableRow key={method.id} hover>
                                                     <TableCell>
                                                         <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                                            <Avatar 
-                                                                src={getCardIcon(method.card_type)} 
+                                                            <Avatar
+                                                                src={getCardIcon(method.card_type)}
                                                                 sx={{ width: 40, height: 25, mr: 2 }}
                                                                 variant="square"
                                                             />
                                                             {method.nickname || `${method.card_type} Card`}
                                                             {method.is_default && (
-                                                                <Chip 
-                                                                    label="Default" 
-                                                                    size="small" 
-                                                                    color="primary" 
-                                                                    sx={{ ml: 2 }} 
+                                                                <Chip
+                                                                    label="Default"
+                                                                    size="small"
+                                                                    color="primary"
+                                                                    sx={{ ml: 2 }}
                                                                     icon={<StarIcon fontSize="small" />}
                                                                 />
                                                             )}
@@ -414,18 +597,18 @@ const PaymentMethods = () => {
                                                     </TableCell>
                                                     <TableCell>
                                                         {method.status === 'active' ? (
-                                                            <Chip 
-                                                                icon={<CheckCircleIcon fontSize="small" />} 
-                                                                label="Active" 
-                                                                color="success" 
-                                                                size="small" 
+                                                            <Chip
+                                                                icon={<CheckCircleIcon fontSize="small" />}
+                                                                label="Active"
+                                                                color="success"
+                                                                size="small"
                                                             />
                                                         ) : (
-                                                            <Chip 
-                                                                icon={<CancelIcon fontSize="small" />} 
-                                                                label="Expired" 
-                                                                color="error" 
-                                                                size="small" 
+                                                            <Chip
+                                                                icon={<CancelIcon fontSize="small" />}
+                                                                label="Expired"
+                                                                color="error"
+                                                                size="small"
                                                             />
                                                         )}
                                                     </TableCell>
@@ -437,17 +620,17 @@ const PaymentMethods = () => {
                                                                     setSelectedMethod(method);
                                                                     setNewPaymentMethod({
                                                                         nickname: method.nickname,
-                                                                        cardNumber: '',
-                                                                        expiryDate: `${method.expiry_month}/${method.expiry_year?.slice(-2)}`,
-                                                                        cvv: '',
-                                                                        cardType: method.cardType,
+                                                                        cardNumber: method.card_number,
+                                                                        expiryDate: method.expiry_date,
+                                                                        cvv: method.cvv,
+                                                                        cardType: method.card_type,
                                                                         is_default: method.is_default
                                                                     });
                                                                     setOpenModal(true);
                                                                 }}
                                                                 disabled={loading.action}
                                                             >
-                                                                {/* <EditIcon color="primary" /> */}
+                                                                <EditIcon color="primary" />
                                                             </HoverIconButton>
                                                             <HoverIconButton
                                                                 size="small"
@@ -490,11 +673,11 @@ const PaymentMethods = () => {
                             <Typography variant="h6" gutterBottom sx={{ mb: 2, fontWeight: 'bold' }}>
                                 Payment Insights
                             </Typography>
-                            
+
                             <Grid container spacing={2}>
                                 {/* Total Cards */}
                                 <Grid item xs={12}>
-                                    <Card sx={{ 
+                                    <Card sx={{
                                         background: 'linear-gradient(135deg, #6a11cb 0%, #2575fc 100%)',
                                         color: 'white',
                                         borderRadius: '12px',
@@ -515,10 +698,10 @@ const PaymentMethods = () => {
                                         </CardContent>
                                     </Card>
                                 </Grid>
-                                
+
                                 {/* Expiring Soon */}
                                 <Grid item xs={12} sm={6}>
-                                    <Card sx={{ 
+                                    <Card sx={{
                                         background: 'linear-gradient(135deg, #f12711 0%, #f5af19 100%)',
                                         color: 'white',
                                         borderRadius: '12px',
@@ -539,10 +722,10 @@ const PaymentMethods = () => {
                                         </CardContent>
                                     </Card>
                                 </Grid>
-                                
+
                                 {/* Default Status */}
                                 <Grid item xs={12} sm={6}>
-                                    <Card sx={{ 
+                                    <Card sx={{
                                         background: 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)',
                                         color: 'white',
                                         borderRadius: '12px',
@@ -563,10 +746,10 @@ const PaymentMethods = () => {
                                         </CardContent>
                                     </Card>
                                 </Grid>
-                                
+
                                 {/* Card Type Distribution */}
                                 <Grid item xs={12}>
-                                    <Card sx={{ 
+                                    <Card sx={{
                                         background: 'linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%)',
                                         color: 'white',
                                         borderRadius: '12px',
@@ -588,10 +771,10 @@ const PaymentMethods = () => {
                                                                 {cardType.count} ({cardType.percentage}%)
                                                             </Typography>
                                                         </Box>
-                                                        <LinearProgress 
-                                                            variant="determinate" 
-                                                            value={cardType.percentage} 
-                                                            sx={{ 
+                                                        <LinearProgress
+                                                            variant="determinate"
+                                                            value={cardType.percentage}
+                                                            sx={{
                                                                 height: 8,
                                                                 borderRadius: 4,
                                                                 backgroundColor: 'rgba(255, 255, 255, 0.1)',
@@ -599,7 +782,7 @@ const PaymentMethods = () => {
                                                                     borderRadius: 4,
                                                                     backgroundColor: '#fff'
                                                                 }
-                                                            }} 
+                                                            }}
                                                         />
                                                     </Box>
                                                 ))}
@@ -727,8 +910,8 @@ const PaymentMethods = () => {
                                 size="large"
                                 disabled={loading.action}
                             >
-                                {loading.action ? 'Processing...' : 
-                                 (selectedMethod ? 'Update Payment Method' : 'Add Payment Method')}
+                                {loading.action ? 'Processing...' :
+                                    (selectedMethod ? 'Update Payment Method' : 'Add Payment Method')}
                             </GradientButton>
                         </Grid>
                     </Grid>
